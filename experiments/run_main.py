@@ -11,7 +11,7 @@ from copy import deepcopy
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, SCENARIOS,
                     DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K)
 from models import Task, Server
-from data.generator import generate_tasks, generate_servers_with_target_rho
+from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import DGSolver, RGSolver, RALNSSolver, MicroLNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
@@ -97,7 +97,7 @@ def run_main_experiment(seed=42, verbose=True):
 
             # 预生成所有周期的任务
             tasks_list = [
-                generate_tasks(scenario_cfg['n_tasks'], mode='bimodal')
+                generate_batch(scenario_cfg['n_tasks'], type_mix=scenario_cfg['type_mix'])
                 for _ in range(N_PERIODS)
             ]
 

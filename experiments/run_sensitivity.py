@@ -8,7 +8,7 @@ import pandas as pd
 from copy import deepcopy
 
 from config import KAPPA, N_PERIODS, MC_SAMPLES, DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K
-from data.generator import generate_tasks, generate_servers_with_target_rho
+from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
@@ -20,7 +20,7 @@ def run_sensitivity_kappa(seed=42):
     kappa_values = [1.5, 2.0, 2.38, 2.8, 3.5]
     n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_tasks(n_tasks, mode='bimodal') for _ in range(N_PERIODS)]
+    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
     total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
     servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 
@@ -61,7 +61,7 @@ def run_sensitivity_patience(seed=42):
     patience_values = [5, 10, 15, 20, 30]
     n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_tasks(n_tasks, mode='bimodal') for _ in range(N_PERIODS)]
+    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
     total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
     servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 
@@ -97,7 +97,7 @@ def run_sensitivity_destroy_k(seed=42):
     destroy_k_values = [1, 2, 3, 5, 8]
     n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_tasks(n_tasks, mode='bimodal') for _ in range(N_PERIODS)]
+    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
     total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
     servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 

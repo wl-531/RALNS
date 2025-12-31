@@ -8,7 +8,7 @@ import pandas as pd
 from copy import deepcopy
 
 from config import KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K
-from data.generator import generate_tasks, generate_servers_with_target_rho
+from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import RGSolver, RALNSSolver, MicroLNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
@@ -34,7 +34,7 @@ def run_ablation_experiment(seed=42):
         run_seed = seed + run_idx * 1000
         np.random.seed(run_seed)
 
-        tasks_list = [generate_tasks(n_tasks, mode='bimodal') for _ in range(N_PERIODS)]
+        tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
         total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
         servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 
