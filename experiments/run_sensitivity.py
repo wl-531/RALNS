@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-from config import KAPPA, N_PERIODS, MC_SAMPLES, DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K
+from config import (KAPPA, N_PERIODS, MC_SAMPLES, DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K,
+                    MAIN_CONFIG)
 from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
@@ -17,12 +18,12 @@ def run_sensitivity_kappa(seed=42):
     """kappa 敏感性"""
     np.random.seed(seed)
 
+    cfg = MAIN_CONFIG
     kappa_values = [1.5, 2.0, 2.38, 2.8, 3.5]
-    n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
-    total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
-    servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
+    tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+    sample_tasks = tasks_list[0]
+    servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
     results = []
     for kappa in kappa_values:
@@ -41,7 +42,7 @@ def run_sensitivity_kappa(seed=42):
             U_max_list.append(metrics['U_max'])
 
             next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
-            for j in range(m_servers):
+            for j in range(cfg['m_servers']):
                 servers[j].L0 = next_backlog[j]
 
         results.append({
@@ -58,12 +59,12 @@ def run_sensitivity_patience(seed=42):
     """patience 敏感性"""
     np.random.seed(seed)
 
+    cfg = MAIN_CONFIG
     patience_values = [5, 10, 15, 20, 30]
-    n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
-    total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
-    servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
+    tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+    sample_tasks = tasks_list[0]
+    servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
     results = []
     for patience in patience_values:
@@ -78,7 +79,7 @@ def run_sensitivity_patience(seed=42):
             cvr_list.append(system_cvr)
 
             next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
-            for j in range(m_servers):
+            for j in range(cfg['m_servers']):
                 servers[j].L0 = next_backlog[j]
 
         results.append({
@@ -94,12 +95,12 @@ def run_sensitivity_destroy_k(seed=42):
     """destroy_k 敏感性"""
     np.random.seed(seed)
 
+    cfg = MAIN_CONFIG
     destroy_k_values = [1, 2, 3, 5, 8]
-    n_tasks, m_servers, rho = 100, 10, 0.85
 
-    tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
-    total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
-    servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
+    tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+    sample_tasks = tasks_list[0]
+    servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
     results = []
     for destroy_k in destroy_k_values:
@@ -114,7 +115,7 @@ def run_sensitivity_destroy_k(seed=42):
             cvr_list.append(system_cvr)
 
             next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
-            for j in range(m_servers):
+            for j in range(cfg['m_servers']):
                 servers[j].L0 = next_backlog[j]
 
         results.append({

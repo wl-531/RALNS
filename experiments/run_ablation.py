@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-from config import KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K
+from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, DECISION_INTERVAL,
+                    T_MAX, PATIENCE, DESTROY_K, MAIN_CONFIG)
 from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import RGSolver, RALNSSolver, MicroLNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
@@ -17,16 +18,13 @@ def run_ablation_experiment(seed=42):
     """消融实验"""
     np.random.seed(seed)
 
+    cfg = MAIN_CONFIG
+
     algorithms = {
         'RG': RGSolver(kappa=KAPPA),
         'Micro-LNS': MicroLNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE),
         'RA-LNS': RALNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
     }
-
-    # 使用 stress 场景
-    n_tasks = 120
-    m_servers = 10
-    rho = 0.92
 
     results = []
 
@@ -34,9 +32,9 @@ def run_ablation_experiment(seed=42):
         run_seed = seed + run_idx * 1000
         np.random.seed(run_seed)
 
-        tasks_list = [generate_batch(n_tasks, type_mix=[0.10, 0.80, 0.10]) for _ in range(N_PERIODS)]
-        total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
-        servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
+        tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+        sample_tasks = tasks_list[0]
+        servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
         for algo_name, solver in algorithms.items():
             np.random.seed(run_seed)
@@ -50,7 +48,7 @@ def run_ablation_experiment(seed=42):
                 cvr_list.append(system_cvr)
 
                 next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
-                for j in range(m_servers):
+                for j in range(cfg['m_servers']):
                     servers[j].L0 = next_backlog[j]
 
             results.append({

@@ -75,13 +75,33 @@ def generate_tasks(n_tasks: int, mode: str = "google_trace") -> List[Task]:
         raise ValueError(f"Unknown mode: {mode}")
 
 
-def generate_servers_with_target_rho(n_servers: int, total_expected_load: float,
+def generate_servers_with_target_rho(n_servers: int,
+                                      tasks: List[Task],
                                       target_rho: float,
+                                      kappa: float,
                                       decision_interval: float = DECISION_INTERVAL) -> List[Server]:
-    """根据目标 rho 反算服务器容量"""
-    total_capacity = total_expected_load / target_rho
+    """根据目标鲁棒利用率生成服务器
+
+    Args:
+        n_servers: 服务器数量
+        tasks: 任务列表（用于计算鲁棒负载）
+        target_rho: 目标鲁棒利用率（如 0.90 表示 U_max ≈ 0.90）
+        kappa: 风险系数
+        decision_interval: 决策周期
+
+    注意：target_rho 是鲁棒负载率，不是期望负载率！
+    """
+    # 计算总鲁棒负载（假设所有任务分配到一个虚拟服务器）
+    total_mu = sum(t.mu for t in tasks)
+    total_var = sum(t.sigma ** 2 for t in tasks)
+    total_sigma = np.sqrt(total_var)
+    total_robust_load = total_mu + kappa * total_sigma
+
+    # 反算总容量
+    total_capacity = total_robust_load / target_rho
     capacity_per_server = total_capacity / n_servers
 
+    # 异构因子
     factors = np.random.uniform(0.9, 1.1, n_servers)
     factors = factors / factors.sum() * n_servers
 

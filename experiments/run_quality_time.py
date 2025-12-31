@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from copy import deepcopy
 
-from config import KAPPA, N_PERIODS, MC_SAMPLES, DECISION_INTERVAL, PATIENCE, DESTROY_K
+from config import (KAPPA, N_PERIODS, MC_SAMPLES, DECISION_INTERVAL, PATIENCE, DESTROY_K,
+                    MAIN_CONFIG)
 from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
@@ -17,13 +18,10 @@ def run_quality_time_experiment(seed=42):
     """Quality vs Time 实验"""
     np.random.seed(seed)
 
+    cfg = MAIN_CONFIG
+
     # 时间预算列表（毫秒）
     time_budgets_ms = [1, 2, 5, 10, 20, 50, 100]
-
-    # 场景配置（使用 stress 场景）
-    n_tasks = 120
-    m_servers = 10
-    rho = 0.92
 
     results = []
 
@@ -32,9 +30,9 @@ def run_quality_time_experiment(seed=42):
         solver = RALNSSolver(kappa=KAPPA, t_max=t_max, patience=PATIENCE, destroy_k=DESTROY_K)
 
         # 预生成任务和服务器
-        tasks_list = [generate_batch(n_tasks, type_mix=[0.10, 0.80, 0.10]) for _ in range(N_PERIODS)]
-        total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
-        servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
+        tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+        sample_tasks = tasks_list[0]
+        servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
         servers = deepcopy(servers_init)
         cvr_list = []
@@ -51,7 +49,7 @@ def run_quality_time_experiment(seed=42):
             U_max_list.append(metrics['U_max'])
 
             next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
-            for j in range(m_servers):
+            for j in range(cfg['m_servers']):
                 servers[j].L0 = next_backlog[j]
 
         results.append({
