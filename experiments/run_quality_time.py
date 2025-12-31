@@ -32,7 +32,7 @@ def run_quality_time_experiment(seed=42):
         solver = RALNSSolver(kappa=KAPPA, t_max=t_max, patience=PATIENCE, destroy_k=DESTROY_K)
 
         # 预生成任务和服务器
-        tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
+        tasks_list = [generate_batch(n_tasks, type_mix=[0.10, 0.80, 0.10]) for _ in range(N_PERIODS)]
         total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
         servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 

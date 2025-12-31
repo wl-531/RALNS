@@ -34,7 +34,7 @@ def run_ablation_experiment(seed=42):
         run_seed = seed + run_idx * 1000
         np.random.seed(run_seed)
 
-        tasks_list = [generate_batch(n_tasks, type_mix=[0.15, 0.70, 0.15]) for _ in range(N_PERIODS)]
+        tasks_list = [generate_batch(n_tasks, type_mix=[0.10, 0.80, 0.10]) for _ in range(N_PERIODS)]
         total_mu = sum(sum(t.mu for t in tasks) for tasks in tasks_list) / N_PERIODS
         servers_init = generate_servers_with_target_rho(m_servers, total_mu, rho, DECISION_INTERVAL)
 

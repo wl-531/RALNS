@@ -11,8 +11,7 @@ RALNS/
 │   ├── task.py              # 任务模型
 │   └── server.py            # 服务器模型
 ├── data/
-│   ├── generator.py         # 任务生成器
-│   └── trace_loader.py      # Alibaba Trace 加载器（占位）
+│   └── generator.py         # 任务生成器（Google Trace Profile）
 ├── solvers/
 │   ├── base.py              # Solver 基类
 │   ├── dg.py                # Deterministic Greedy
@@ -60,6 +59,18 @@ python -m experiments.run_ablation
 python -m experiments.run_sensitivity
 ```
 
+## 任务类型（Google Trace 2019 Profile）
+
+基于 Google Cluster Trace 2019 提取的任务统计特征：
+
+| 类型 | 名称 | CV 范围 | μ 范围 | 占比 |
+|------|------|---------|--------|------|
+| Type A | Stable | 0.02 - 0.15 | 10 - 165 | ~14% |
+| Type B | Volatile | 0.40 - 2.50 | 10 - 197 | ~72% |
+| Type C | General | 0.15 - 0.40 | 10 - 264 | ~14% |
+
+**Type B (Volatile)** 是隐性过载的主要来源，也是展示风险感知优势的关键。
+
 ## 算法说明
 
 ### RA-LNS
@@ -89,12 +100,12 @@ Tie-break: R_sum
 
 ## 实验场景
 
-| 场景 | n_tasks | m_servers | ρ |
-|------|---------|-----------|-----|
-| stable | 80 | 10 | 0.75 |
-| mixed | 100 | 10 | 0.80 |
-| volatile | 100 | 10 | 0.85 |
-| stress | 120 | 10 | 0.92 |
+| 场景 | n_tasks | m_servers | Type A | Type B | Type C | ρ |
+|------|---------|-----------|--------|--------|--------|-----|
+| stable | 80 | 10 | 50% | 30% | 20% | 0.75 |
+| mixed | 100 | 10 | 30% | 50% | 20% | 0.80 |
+| volatile | 100 | 10 | 15% | 70% | 15% | 0.85 |
+| stress | 120 | 10 | 10% | 80% | 10% | 0.92 |
 
 ## 参数配置
 
