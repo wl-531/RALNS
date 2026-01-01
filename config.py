@@ -16,7 +16,7 @@ EPS_DIV = 1e-6
 N_PERIODS = 100
 N_RUNS = 30
 MC_SAMPLES = 1000
-DECISION_INTERVAL = 50.0
+DECISION_INTERVAL = 5.0
 
 # ============================================================
 # Google Trace 2019 Profile (v1)

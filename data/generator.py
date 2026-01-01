@@ -89,19 +89,24 @@ def generate_servers_with_target_rho(n_servers: int,
         kappa: 风险系数
         decision_interval: 决策周期
 
-    注意：target_rho 是鲁棒负载率，不是期望负载率！
+    注意：考虑任务分散到多台服务器的效应。
+          target_rho 是期望的 U_max（最大鲁棒利用率）。
     """
-    # 计算总鲁棒负载（假设所有任务分配到一个虚拟服务器）
     total_mu = sum(t.mu for t in tasks)
     total_var = sum(t.sigma ** 2 for t in tasks)
-    total_sigma = np.sqrt(total_var)
-    total_robust_load = total_mu + kappa * total_sigma
 
-    # 反算总容量
-    total_capacity = total_robust_load / target_rho
-    capacity_per_server = total_capacity / n_servers
+    # 假设均匀分配到 m 台服务器
+    # 每台服务器的鲁棒负载 ≈ total_mu/m + kappa * sqrt(total_var/m)
+    per_server_mu = total_mu / n_servers
+    per_server_var = total_var / n_servers
+    per_server_sigma = np.sqrt(per_server_var)
+    per_server_robust = per_server_mu + kappa * per_server_sigma
 
-    # 异构因子
+    # 目标：U_max = L_hat_j / C_j = target_rho
+    # 所以 C_j = L_hat_j / target_rho
+    capacity_per_server = per_server_robust / target_rho
+
+    # 异构因子（±10%）
     factors = np.random.uniform(0.9, 1.1, n_servers)
     factors = factors / factors.sum() * n_servers
 
