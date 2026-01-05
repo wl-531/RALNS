@@ -5,8 +5,8 @@ ALPHA = 0.15
 KAPPA = 2.38
 
 # RA-LNS 参数
-T_MAX = 0.005
-PATIENCE = 15
+T_MAX = 0.010  # 10ms，给 Stage-1B 足够时间触发
+PATIENCE = 5   # 更快触发 Stage-1B
 DESTROY_K = 3
 EPS_TOL = 1e-9
 EPS_CMP = 1e-6
@@ -16,7 +16,7 @@ EPS_DIV = 1e-6
 N_PERIODS = 100
 N_RUNS = 30
 MC_SAMPLES = 1000
-DECISION_INTERVAL = 5.0
+DECISION_INTERVAL = 4.8
 
 # ============================================================
 # Google Trace 2019 Profile (v1)

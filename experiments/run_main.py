@@ -11,7 +11,7 @@ from copy import deepcopy
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, MAIN_CONFIG,
                     DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K)
 from data.generator import generate_batch, generate_servers_with_target_rho
-from solvers import DGSolver, RGSolver, RALNSSolver, MicroLNSSolver
+from solvers import DGSolver, RGSolver, MMRGSolver, RALNSSolver, MicroLNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
 
@@ -61,6 +61,7 @@ def run_main_experiment(seed=42, verbose=True):
     algorithms = {
         'DG': DGSolver(),
         'RG': RGSolver(kappa=KAPPA),
+        'MM-RG': MMRGSolver(kappa=KAPPA),
         'Micro': MicroLNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE),
         'RA-LNS': RALNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
     }

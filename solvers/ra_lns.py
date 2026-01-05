@@ -1,7 +1,9 @@
 """RA-LNS: Risk-Aware Large Neighborhood Search
 
-对照论文伪代码实现，符合 algo.md 描述。
-字典序：Psi(X) = (-feas, U_max, O1)，tie-break: R_sum
+字典序：Psi(X) = (-feas, RR_max, O1)，tie-break: R_sum
+
+Level-1 使用 RR_max = max_j [σ_j / (C_j - μ_j)] 直接对应 Cantelli CVR bound，
+而非 U_max（负载均衡指标）。
 """
 import time
 import numpy as np
@@ -41,12 +43,43 @@ class RALNSSolution:
 
     @property
     def RD(self) -> np.ndarray:
-        """风险密度 RD_j = sigma_j / max(Gap_j, eps_div)"""
+        """风险密度 RD_j = sigma_j / max(Gap_j, eps_div)，用于搜索引导"""
         return self.sigma_j / np.maximum(self.Gap, EPS_DIV)
 
     @property
+    def margin(self) -> np.ndarray:
+        """原始安全余量: C_j - μ_j(X)，不含 κσ 项
+
+        用于计算 Risk Ratio，直接对应 Cantelli bound
+        """
+        return self.C - (self.L0 + self.mu_sum)
+
+    @property
+    def RR(self) -> np.ndarray:
+        """Risk Ratio: σ_j / (C_j - μ_j)，直接对应 Cantelli bound
+
+        理论依据:
+            Cantelli: Pr{L̃_j > C_j} ≤ 1/(1 + k_j²), k_j = (C_j - μ_j)/σ_j
+            所以 RR_j = 1/k_j = σ_j/(C_j - μ_j)
+            min max_j RR_j ⟺ min max_j CVR_j
+
+        注意: 与 RD 的区别是分母不含 κσ_j 项
+            - RR: σ_j / (C_j - μ_j)      ← Level-1 接受准则
+            - RD: σ_j / (C_j - L̂_j)     ← 搜索引导 + tie-break
+        """
+        return self.sigma_j / np.maximum(self.margin, EPS_DIV)
+
+    @property
+    def RR_max(self) -> float:
+        """Level-1 目标: 最大风险比（越小越好）
+
+        物理意义: 最小化最坏情况的单服务器 CVR
+        """
+        return float(np.max(self.RR))
+
+    @property
     def U_max(self) -> float:
-        """Level-1: 最大鲁棒利用率"""
+        """最大鲁棒利用率（仅用于日志，不再用于 Level-1）"""
         return float(np.max(self.L_hat / self.C))
 
     @property
@@ -64,10 +97,15 @@ class RALNSSolution:
         return bool(np.all(self.Gap >= -EPS_TOL))
 
     def Psi(self) -> Tuple[int, float, float]:
-        """3 层字典序向量：(-feas, U_max, O1)"""
+        """3层字典序向量（越小越好）
+
+        Level-0: 可行性 (硬约束)，可行=0, 不可行=1
+        Level-1: min max_j RR_j (CVR 代理，直接对应 Cantelli)
+        Level-2: min O₁ = min max_j L̂_j (makespan)
+        """
         return (
-            0 if self.is_feasible() else 1,  # -feas: 可行=0, 不可行=1
-            self.U_max,
+            0 if self.is_feasible() else 1,
+            self.RR_max,
             self.O1
         )
 
@@ -357,7 +395,7 @@ class RALNSSolver(BaseSolver):
     def _psi_better(self, psi1: Tuple, psi2: Tuple, r_sum1: float, r_sum2: float) -> bool:
         """3 层字典序比较 + R_sum tie-break
 
-        Psi = (-feas, U_max, O1)
+        Psi = (-feas, RR_max, O1)
         越小越好
         """
         # Level-0: feas（严格比较）
@@ -373,3 +411,74 @@ class RALNSSolver(BaseSolver):
 
         # Tie-break: R_sum 最小者胜
         return r_sum1 < r_sum2 - self.eps_cmp
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, '.')
+    from models.task import Task
+    from models.server import Server
+
+    print("=" * 60)
+    print("测试 RA-LNS Level-1 修改: U_max -> RR_max")
+    print("=" * 60)
+
+    # 创建测试数据：包含"陷阱任务"（低μ高σ）
+    tasks = []
+    # Type A: 稳定任务（高μ低σ）
+    for _ in range(15):
+        tasks.append(Task(mu=80, sigma=10))
+    # Type B: 陷阱任务（低μ高σ，Implicit Overload 元凶）
+    for _ in range(5):
+        tasks.append(Task(mu=30, sigma=60))
+
+    servers = [Server(f=100, C=500, L0=0) for _ in range(5)]
+
+    print(f"\n任务分布:")
+    print(f"  - 稳定任务 (mu=80, sigma=10): 15 个")
+    print(f"  - 陷阱任务 (mu=30, sigma=60): 5 个")
+    print(f"  - 服务器: 5 台, C=500 each")
+
+    # 运行 RA-LNS
+    solver = RALNSSolver(kappa=2.38, patience=15, destroy_k=3, t_max=0.01)
+    assignment = solver.solve(tasks, servers)
+
+    # 重建解对象以输出指标
+    sol = RALNSSolution(servers, kappa=2.38)
+    sol.assignment = [-1] * len(tasks)
+    for i, j in enumerate(assignment):
+        sol.mu_sum[j] += tasks[i].mu
+        sol.sigma_sq_sum[j] += tasks[i].sigma ** 2
+        sol.assignment[i] = j
+
+    print(f"\n===== RA-LNS 结果 =====")
+    print(f"Feasible: {sol.is_feasible()}")
+    print(f"RR_max:   {sol.RR_max:.4f}  <- 新 Level-1 (直接对应 CVR)")
+    print(f"U_max:    {sol.U_max:.4f}   <- 旧 Level-1 (仅供对比)")
+    print(f"O1:       {sol.O1:.2f}      <- Level-2 (makespan)")
+    print(f"R_sum:    {sol.R_sum:.4f}   <- Tie-break")
+    print(f"Psi:      {sol.Psi()}")
+
+    # 检查每台服务器的任务数
+    tasks_per_server = [assignment.count(j) for j in range(5)]
+    print(f"\nTasks per server: {tasks_per_server}")
+
+    # 检查陷阱任务的分布（应该分散到不同服务器）
+    trap_indices = list(range(15, 20))
+    trap_servers = [assignment[i] for i in trap_indices]
+    print(f"\n陷阱任务 (高sigma) 分配:")
+    print(f"  服务器分布: {trap_servers}")
+    print(f"  分散度: {len(set(trap_servers))}/5 台服务器")
+
+    # 输出每台服务器的 RR 值
+    print(f"\n每台服务器的风险比 RR_j:")
+    for j in range(5):
+        print(f"  Server {j}: RR={sol.RR[j]:.4f}, margin={sol.margin[j]:.1f}, sigma={sol.sigma_j[j]:.1f}")
+
+    # 验证：陷阱任务应该被分散
+    if len(set(trap_servers)) >= 3:
+        print(f"\n[OK] 陷阱任务被正确分散（{len(set(trap_servers))} 台服务器）")
+    else:
+        print(f"\n[WARN] 陷阱任务过于集中（仅 {len(set(trap_servers))} 台服务器）")
+
+    print("\n" + "=" * 60)

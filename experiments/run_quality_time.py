@@ -16,23 +16,23 @@ from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
 def run_quality_time_experiment(seed=42):
     """Quality vs Time 实验"""
-    np.random.seed(seed)
-
     cfg = MAIN_CONFIG
 
     # 时间预算列表（毫秒）
     time_budgets_ms = [1, 2, 5, 10, 20, 50, 100]
 
+    # 在循环外生成固定的任务和服务器（所有时间预算共用）
+    np.random.seed(seed)
+    tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
+    sample_tasks = tasks_list[0]
+    servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
+
     results = []
 
     for t_max_ms in time_budgets_ms:
+        np.random.seed(seed)  # 重置种子，确保 MC 验证可比
         t_max = t_max_ms / 1000.0
         solver = RALNSSolver(kappa=KAPPA, t_max=t_max, patience=PATIENCE, destroy_k=DESTROY_K)
-
-        # 预生成任务和服务器
-        tasks_list = [generate_batch(cfg['n_tasks'], type_mix=cfg['type_mix']) for _ in range(N_PERIODS)]
-        sample_tasks = tasks_list[0]
-        servers_init = generate_servers_with_target_rho(cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL)
 
         servers = deepcopy(servers_init)
         cvr_list = []
