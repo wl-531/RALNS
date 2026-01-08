@@ -1,4 +1,4 @@
-"""主实验：单一场景 able 4 算法 able N_RUNS"""
+"""主实验：4 算法对比 (DG/RG/Std-LNS/RA-LNS)"""
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,22 +11,27 @@ from copy import deepcopy
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, MAIN_CONFIG,
                     DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K)
 from data.generator import generate_batch, generate_servers_with_target_rho
-from solvers import DGSolver, RGSolver, MMRGSolver, RALNSSolver, MicroLNSSolver
+from solvers import DGSolver, RGSolver, StdLNSSolver, RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
 
 def run_online_simulation(solver, tasks_list, servers_init, n_periods):
-    """运行在线仿真"""
+    """运行在线仿真，收集 backlog"""
     servers = deepcopy(servers_init)
     m = len(servers)
 
     results = {
         'cvr': [], 'per_server_vr': [], 'excess': [],
-        'U_max': [], 'O1': [], 'time_ms': [], 'feasible': []
+        'U_max': [], 'O1': [], 'time_ms': [], 'feasible': [],
+        'backlog': []  # 每周期开始时的系统总 backlog
     }
 
     for t in range(n_periods):
         tasks = tasks_list[t]
+
+        # 记录周期开始时的 backlog
+        system_backlog = sum(s.L0 for s in servers)
+        results['backlog'].append(system_backlog)
 
         t0 = time.perf_counter()
         assignment = solver.solve(tasks, servers)
@@ -61,12 +66,12 @@ def run_main_experiment(seed=42, verbose=True):
     algorithms = {
         'DG': DGSolver(),
         'RG': RGSolver(kappa=KAPPA),
-        'MM-RG': MMRGSolver(kappa=KAPPA),
-        'Micro': MicroLNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE),
+        'Std-LNS': StdLNSSolver(t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
         'RA-LNS': RALNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
     }
 
     all_results = []
+    backlog_data = []  # 收集 backlog 时间序列
 
     if verbose:
         print(f"===== Main Experiment =====")
@@ -89,6 +94,8 @@ def run_main_experiment(seed=42, verbose=True):
             cfg['m_servers'], sample_tasks, cfg['rho'], KAPPA, DECISION_INTERVAL
         )
 
+        run_backlog = {'run': run_idx}  # 本次运行的 backlog
+
         for algo_name, solver in algorithms.items():
             np.random.seed(run_seed)
 
@@ -109,6 +116,15 @@ def run_main_experiment(seed=42, verbose=True):
             }
             all_results.append(row)
 
+            # 收集 backlog 数据（仅第一次运行，用于绘图）
+            if run_idx == 0:
+                for t, bl in enumerate(results['backlog']):
+                    backlog_data.append({
+                        'period': t,
+                        'algorithm': algo_name,
+                        'backlog': bl
+                    })
+
         if verbose and run_idx == 0:
             print(f"\n  Run 0 results:")
             for algo_name in algorithms.keys():
@@ -118,6 +134,13 @@ def run_main_experiment(seed=42, verbose=True):
 
     df = pd.DataFrame(all_results)
     df.to_csv('results_main.csv', index=False)
+
+    # 保存 backlog 数据（pivot 格式）
+    if backlog_data:
+        df_backlog = pd.DataFrame(backlog_data)
+        df_backlog_pivot = df_backlog.pivot(index='period', columns='algorithm', values='backlog')
+        df_backlog_pivot = df_backlog_pivot[['DG', 'RG', 'Std-LNS', 'RA-LNS']]  # 确保顺序
+        df_backlog_pivot.to_csv('results_backlog.csv')
 
     if verbose:
         print("\n===== Summary (mean +/- std) =====")

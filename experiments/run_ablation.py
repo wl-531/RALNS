@@ -1,4 +1,4 @@
-"""消融实验：RA-LNS vs Micro-LNS vs RG"""
+"""消融实验：Construction-Only / Micro-Only / Random-Destroy / RA-LNS"""
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,8 +10,9 @@ from copy import deepcopy
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, DECISION_INTERVAL,
                     T_MAX, PATIENCE, DESTROY_K, MAIN_CONFIG)
 from data.generator import generate_batch, generate_servers_with_target_rho
-from solvers import RGSolver, RALNSSolver, MicroLNSSolver
-from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
+from solvers import (ConstructionOnlySolver, MicroLNSSolver,
+                     RandomDestroySolver, RALNSSolver)
+from evaluation import monte_carlo_verify, compute_next_backlog
 
 
 def run_ablation_experiment(seed=42):
@@ -21,8 +22,9 @@ def run_ablation_experiment(seed=42):
     cfg = MAIN_CONFIG
 
     algorithms = {
-        'RG': RGSolver(kappa=KAPPA),
-        'Micro-LNS': MicroLNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE),
+        'Construction-Only': ConstructionOnlySolver(kappa=KAPPA),
+        'Micro-Only': MicroLNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE),
+        'Random-Destroy': RandomDestroySolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
         'RA-LNS': RALNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
     }
 

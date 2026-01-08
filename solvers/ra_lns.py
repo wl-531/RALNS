@@ -168,8 +168,10 @@ class RALNSSolver(BaseSolver):
 
         stagnation = 0
         iteration = 0
+        max_lns_triggers = max(sol.m * 3, 30)  # 增加 LNS 尝试次数
+        lns_triggers = 0
 
-        # Phase 1: Risk-Density-Guided Descent
+        # Phase 1: Risk-Density-Guided Descent (论文版本)
         while time.perf_counter() - start < self.t_max:
             if stagnation < self.patience:
                 # Stage-1A: Micro Risk Hedging
@@ -177,7 +179,10 @@ class RALNSSolver(BaseSolver):
             else:
                 # Stage-1B: Macro Risk Rebalancing
                 improved = self._risk_guided_lns(sol, tasks)
-                stagnation = 0
+                stagnation = 0  # 论文：无条件重置
+                lns_triggers += 1
+                if lns_triggers >= max_lns_triggers:
+                    break  # 防止死循环
 
             if improved:
                 stagnation = 0
@@ -251,58 +256,61 @@ class RALNSSolver(BaseSolver):
     def _risk_hedging_move(self, sol: RALNSSolution, tasks: List[Task]) -> bool:
         """Stage-1A: Micro Risk Hedging
 
-        1. 找到风险热点 j_hot = argmax RD_j
-        2. 从 j_hot 选择 sigma 最大的任务作为 victim
-        3. 尝试 Relocate 和 Swap 操作
+        1. 找 j_hot = argmax_j RD_j（风险密度最高的服务器）
+        2. 按 sigma 降序遍历 victims，找到第一个可改进的移动
+        3. 对每个目标服务器评估 Relocate/Swap
         """
-        # 找到风险热点
+        # 找风险密度最高的服务器
         j_hot = int(np.argmax(sol.RD))
         victims = [i for i, j in enumerate(sol.assignment) if j == j_hot]
         if not victims:
             return False
 
-        # 选择 sigma 最大的任务
-        victim_sigmas = [tasks[i].sigma for i in victims]
-        victim_idx = victims[int(np.argmax(victim_sigmas))]
-        victim_task = tasks[victim_idx]
-        from_j = sol.assignment[victim_idx]
+        # 按 sigma 降序排列所有 victims
+        victim_sigmas = [(i, tasks[i].sigma) for i in victims]
+        victim_sigmas.sort(key=lambda x: -x[1])
 
         best_move = None
         best_psi = sol.Psi()
         best_rsum = sol.R_sum
+        from_j = j_hot
 
-        for to_j in range(sol.m):
-            if to_j == from_j:
-                continue
+        # 遍历所有 victims（按 sigma 降序）
+        for victim_idx, _ in victim_sigmas:
+            victim_task = tasks[victim_idx]
 
-            # Relocate: 将 victim 从 from_j 移动到 to_j
-            sol.apply_move(victim_idx, victim_task, from_j, to_j)
-            new_psi = sol.Psi()
-            new_rsum = sol.R_sum
-            if self._psi_better(new_psi, best_psi, new_rsum, best_rsum):
-                best_psi = new_psi
-                best_rsum = new_rsum
-                best_move = ('relocate', victim_idx, victim_task, from_j, to_j)
-            sol.rollback_move(victim_idx, victim_task, from_j, to_j)
+            for to_j in range(sol.m):
+                if to_j == from_j:
+                    continue
 
-            # Swap: 与 to_j 上 sigma 最小的任务交换
-            swap_cands = [i for i, j in enumerate(sol.assignment) if j == to_j]
-            if swap_cands:
-                swap_sigmas = [tasks[i].sigma for i in swap_cands]
-                swap_idx = swap_cands[int(np.argmin(swap_sigmas))]
-                swap_task = tasks[swap_idx]
-
+                # Relocate
                 sol.apply_move(victim_idx, victim_task, from_j, to_j)
-                sol.apply_move(swap_idx, swap_task, to_j, from_j)
                 new_psi = sol.Psi()
                 new_rsum = sol.R_sum
                 if self._psi_better(new_psi, best_psi, new_rsum, best_rsum):
                     best_psi = new_psi
                     best_rsum = new_rsum
-                    best_move = ('swap', victim_idx, victim_task, from_j, to_j,
-                                 swap_idx, swap_task)
-                sol.rollback_move(swap_idx, swap_task, to_j, from_j)
+                    best_move = ('relocate', victim_idx, victim_task, from_j, to_j)
                 sol.rollback_move(victim_idx, victim_task, from_j, to_j)
+
+                # Swap: 与 to_j 上 sigma 最小的任务交换
+                swap_cands = [i for i, j in enumerate(sol.assignment) if j == to_j]
+                if swap_cands:
+                    swap_sigmas = [tasks[i].sigma for i in swap_cands]
+                    swap_idx = swap_cands[int(np.argmin(swap_sigmas))]
+                    swap_task = tasks[swap_idx]
+
+                    sol.apply_move(victim_idx, victim_task, from_j, to_j)
+                    sol.apply_move(swap_idx, swap_task, to_j, from_j)
+                    new_psi = sol.Psi()
+                    new_rsum = sol.R_sum
+                    if self._psi_better(new_psi, best_psi, new_rsum, best_rsum):
+                        best_psi = new_psi
+                        best_rsum = new_rsum
+                        best_move = ('swap', victim_idx, victim_task, from_j, to_j,
+                                     swap_idx, swap_task)
+                    sol.rollback_move(swap_idx, swap_task, to_j, from_j)
+                    sol.rollback_move(victim_idx, victim_task, from_j, to_j)
 
         # 应用最佳移动
         if best_move:
@@ -317,24 +325,54 @@ class RALNSSolver(BaseSolver):
         return False
 
     def _risk_guided_lns(self, sol: RALNSSolution, tasks: List[Task]) -> bool:
-        """Stage-1B: Macro Risk Rebalancing
+        """Stage-1B: Macro Risk Rebalancing (论文版本)
 
-        1. Destroy: 从 RD 最大的服务器移除 top-k 高方差任务
-        2. Repair: 按方差降序重新插入，选择使 ΔRD 最小的服务器
+        1. Destroy: 找 j* = argmax_j RD_j，移除 top-k 最高方差任务
+        2. Repair: 按方差降序重新插入，选择最小化 ΔRD 的服务器
         """
-        # 找到风险热点
-        j_hot = int(np.argmax(sol.RD))
-        victims = [i for i, j in enumerate(sol.assignment) if j == j_hot]
-        if len(victims) < self.destroy_k:
+        backup_sol = sol.copy()
+
+        # BUG FIX: 按 RD 降序尝试多个服务器
+        server_order = np.argsort(-sol.RD)  # RD 降序
+        j_hot = None
+        victims = []
+        for j in server_order:
+            candidates = [i for i, jj in enumerate(sol.assignment) if jj == j]
+            if len(candidates) >= self.destroy_k:
+                j_hot = j
+                victims = candidates
+                break
+
+        if j_hot is None:
             return False
 
-        # 选择 top-k 高方差任务
-        victim_sigmas = [(i, tasks[i].sigma) for i in victims]
-        victim_sigmas.sort(key=lambda x: x[1], reverse=True)
-        destroy_tasks = [i for i, _ in victim_sigmas[:self.destroy_k]]
+        # BUG FIX: 只选择可移动的任务（有至少一个可行目标服务器）
+        movable_victims = []
+        for i in victims:
+            task = tasks[i]
+            # 检查是否有可行的目标服务器（排除 j_hot）
+            has_feasible_target = False
+            for j_to in range(sol.m):
+                if j_to == j_hot:
+                    continue
+                new_sigma_sq_j = sol.sigma_sq_sum[j_to] + task.sigma ** 2
+                new_sigma_j = np.sqrt(max(new_sigma_sq_j, 0))
+                new_mu_j = sol.mu_sum[j_to] + task.mu
+                new_L_hat_j = sol.L0[j_to] + new_mu_j + self.kappa * new_sigma_j
+                new_Gap_j = sol.C[j_to] - new_L_hat_j
+                if new_Gap_j >= -self.eps_tol:
+                    has_feasible_target = True
+                    break
+            if has_feasible_target:
+                movable_victims.append((i, tasks[i].sigma))
 
-        # 备份当前解
-        backup_sol = sol.copy()
+        # 如果可移动任务不足，返回失败
+        if len(movable_victims) < self.destroy_k:
+            return False
+
+        # 从可移动任务中选择 top-k 最高方差
+        movable_victims.sort(key=lambda x: x[1], reverse=True)
+        destroy_tasks = [i for i, _ in movable_victims[:self.destroy_k]]
 
         # Destroy: 移除任务
         for i in destroy_tasks:
@@ -344,39 +382,69 @@ class RALNSSolver(BaseSolver):
             sol.sigma_sq_sum[j] -= task.sigma ** 2
             sol.assignment[i] = -1
 
-        # Repair: 按方差降序重新插入
+        # Repair: 按方差降序重新插入，选择最小化 new_RR_j 的服务器
+        # BUG FIX: 使用 RR (与目标一致) 而不是 RD
         repair_order = sorted(destroy_tasks, key=lambda i: tasks[i].sigma, reverse=True)
+        is_first = True
+
         for i in repair_order:
             task = tasks[i]
 
-            # 计算分配到每台服务器后的 ΔRD
-            new_sigma_sq = sol.sigma_sq_sum + task.sigma ** 2
-            new_sigma = np.sqrt(np.maximum(new_sigma_sq, 0))
-            new_mu = sol.mu_sum + task.mu
-            new_L_hat = sol.L0 + new_mu + self.kappa * new_sigma
-            new_Gap = sol.C - new_L_hat
-
+            # 计算插入到每台服务器后的 RR
             best_j = None
-            best_delta_rd = np.inf
-            for j in range(sol.m):
-                if new_Gap[j] >= -self.eps_tol:
-                    rd_before = sol.sigma_j[j] / max(sol.Gap[j], self.eps_div)
-                    rd_after = new_sigma[j] / max(new_Gap[j], self.eps_div)
-                    delta_rd = rd_after - rd_before
-                    if delta_rd < best_delta_rd:
-                        best_delta_rd = delta_rd
-                        best_j = j
+            best_new_rr = np.inf
+            fallback_j = None
+            fallback_new_rr = np.inf
 
+            for j in range(sol.m):
+                # 计算插入后的状态
+                new_sigma_sq_j = sol.sigma_sq_sum[j] + task.sigma ** 2
+                new_sigma_j = np.sqrt(max(new_sigma_sq_j, 0))
+                new_mu_j = sol.mu_sum[j] + task.mu
+                new_L_hat_j = sol.L0[j] + new_mu_j + self.kappa * new_sigma_j
+                new_Gap_j = sol.C[j] - new_L_hat_j
+
+                # 跳过不可行的服务器
+                if new_Gap_j < -self.eps_tol:
+                    continue
+
+                # 计算新的 RR_j = sigma_j / margin_j (与目标一致)
+                new_margin_j = sol.C[j] - (sol.L0[j] + new_mu_j)
+                new_RR_j = new_sigma_j / max(new_margin_j, self.eps_div)
+
+                # 第一个任务优先不返回 j_hot
+                if is_first and j == j_hot:
+                    if fallback_j is None or new_RR_j < fallback_new_rr:
+                        fallback_j = j
+                        fallback_new_rr = new_RR_j
+                    continue
+
+                if new_RR_j < best_new_rr:
+                    best_new_rr = new_RR_j
+                    best_j = j
+
+            # 如果没有可行的非 j_hot 选项，允许返回 j_hot
+            if best_j is None and fallback_j is not None:
+                best_j = fallback_j
+
+            # 分配任务到最小 ΔRD 的服务器
             if best_j is not None:
                 sol.assignment[i] = best_j
                 sol.mu_sum[best_j] += task.mu
                 sol.sigma_sq_sum[best_j] += task.sigma ** 2
             else:
-                # Fallback
-                j_min = int(np.argmin(sol.L_hat))
+                # Fallback: 放到 L_hat 最小的服务器（排除 j_hot 如果是第一个任务）
+                candidates = [j for j in range(sol.m) if not (is_first and j == j_hot)]
+                if candidates:
+                    L_hat_cands = [sol.L_hat[j] for j in candidates]
+                    j_min = candidates[int(np.argmin(L_hat_cands))]
+                else:
+                    j_min = int(np.argmin(sol.L_hat))
                 sol.assignment[i] = j_min
                 sol.mu_sum[j_min] += task.mu
                 sol.sigma_sq_sum[j_min] += task.sigma ** 2
+
+            is_first = False
 
         # 检查是否改进
         if self._better(sol, backup_sol):

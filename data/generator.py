@@ -8,7 +8,7 @@ from config import (
     TYPE_A_MU_RANGE, TYPE_A_CV_RANGE,
     TYPE_B_MU_RANGE, TYPE_B_CV_RANGE,
     TYPE_C_MU_RANGE, TYPE_C_CV_RANGE,
-    DECISION_INTERVAL,
+    T_BASE, DECISION_INTERVAL,
 )
 
 # Profile 配置
@@ -89,8 +89,10 @@ def generate_servers_with_target_rho(n_servers: int,
         kappa: 风险系数
         decision_interval: 决策周期
 
-    注意：考虑任务分散到多台服务器的效应。
-          target_rho 是期望的 U_max（最大鲁棒利用率）。
+    注意：
+        - target_rho 是在 T_BASE 周期下的期望利用率
+        - f 基于 T_BASE 计算（固定），C = f * decision_interval
+        - 调小 decision_interval → C 减小 → 系统压力增大
     """
     total_mu = sum(t.mu for t in tasks)
     total_var = sum(t.sigma ** 2 for t in tasks)
@@ -102,9 +104,12 @@ def generate_servers_with_target_rho(n_servers: int,
     per_server_sigma = np.sqrt(per_server_var)
     per_server_robust = per_server_mu + kappa * per_server_sigma
 
-    # 目标：U_max = L_hat_j / C_j = target_rho
-    # 所以 C_j = L_hat_j / target_rho
-    capacity_per_server = per_server_robust / target_rho
+    # 基于 T_BASE 计算基准容量
+    # C_base = L_hat / target_rho（在 T_BASE 周期下达到 target_rho）
+    C_base = per_server_robust / target_rho
+
+    # f = C_base / T_BASE（处理速率固定）
+    f_base = C_base / T_BASE
 
     # 异构因子（±10%）
     factors = np.random.uniform(0.9, 1.1, n_servers)
@@ -112,8 +117,9 @@ def generate_servers_with_target_rho(n_servers: int,
 
     servers = []
     for j in range(n_servers):
-        C = capacity_per_server * factors[j]
-        f = C / decision_interval
+        f = f_base * factors[j]
+        # C = f * decision_interval（实际容量随周期变化）
+        C = f * decision_interval
         servers.append(Server(f=f, C=C, L0=0.0))
 
     return servers

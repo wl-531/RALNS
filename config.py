@@ -5,8 +5,8 @@ ALPHA = 0.15
 KAPPA = 2.38
 
 # RA-LNS 参数
-T_MAX = 0.010  # 10ms，给 Stage-1B 足够时间触发
-PATIENCE = 5   # 更快触发 Stage-1B
+T_MAX = 0.100  # 100ms，允许更多迭代
+PATIENCE = 2   # 快速触发 Stage-1B
 DESTROY_K = 3
 EPS_TOL = 1e-9
 EPS_CMP = 1e-6
@@ -16,7 +16,10 @@ EPS_DIV = 1e-6
 N_PERIODS = 100
 N_RUNS = 30
 MC_SAMPLES = 1000
-DECISION_INTERVAL = 4.8
+
+# 决策周期配置
+T_BASE = 4.8              # 基准周期（用于计算处理速率 f）
+DECISION_INTERVAL = 4.5   # 实际决策周期（调小→压力增大）
 
 # ============================================================
 # Google Trace 2019 Profile (v1)
