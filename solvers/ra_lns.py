@@ -205,16 +205,16 @@ class RALNSSolver(BaseSolver):
                                   servers: List[Server]) -> Tuple[RALNSSolution, int]:
         """Phase 0: Risk-First Construction
 
-        按 delta_i = mu_i + kappa * sigma_i 降序贪心分配。
-        选择使 score = Gap'_j / max(sigma_i, eps_div) 最大的可行服务器。
+        按到达顺序贪心分配（随机分散高风险任务）。
+        选择使 new_RR_j = σ'_j / (C_j - μ'_j) 最小的可行服务器。
+        与 Level-1 目标 (min RR_max) 一致。
         """
         sol = RALNSSolution(servers, self.kappa)
         fallback_count = 0
         n_tasks = len(tasks)
 
-        # 按 delta_i 降序排序
-        deltas = [(i, tasks[i].get_delta(self.kappa)) for i in range(n_tasks)]
-        sorted_indices = [i for i, _ in sorted(deltas, key=lambda x: -x[1])]
+        # 按到达顺序（任务已 shuffle，自然分散风险）
+        sorted_indices = list(range(n_tasks))
         sol.assignment = [-1] * n_tasks
 
         for i in sorted_indices:
@@ -227,16 +227,16 @@ class RALNSSolver(BaseSolver):
             new_L_hat = sol.L0 + new_mu + self.kappa * new_sigma
             new_Gap = sol.C - new_L_hat
 
-            # 计算 score = Gap'_j / max(sigma_i, eps_div)
-            task_sigma = max(task.sigma, self.eps_div)
-            scores = new_Gap / task_sigma
+            # 计算 new_RR_j = σ'_j / margin'_j（与 Level-1 目标一致）
+            new_margin = sol.C - (sol.L0 + new_mu)
+            new_RR = new_sigma / np.maximum(new_margin, self.eps_div)
 
-            # 选择可行且 score 最大的服务器
+            # 选择可行且 RR 最小的服务器
             best_j = None
-            best_score = -np.inf
+            best_rr = np.inf
             for j in range(sol.m):
-                if new_Gap[j] >= -self.eps_tol and scores[j] > best_score:
-                    best_score = scores[j]
+                if new_Gap[j] >= -self.eps_tol and new_RR[j] < best_rr:
+                    best_rr = new_RR[j]
                     best_j = j
 
             if best_j is not None:
@@ -244,9 +244,9 @@ class RALNSSolver(BaseSolver):
                 sol.mu_sum[best_j] += task.mu
                 sol.sigma_sq_sum[best_j] += task.sigma ** 2
             else:
-                # Fallback: 分配到 L_hat 最小的服务器
+                # Fallback: 分配到 RR 最小的服务器（即使不可行）
                 fallback_count += 1
-                j_min = int(np.argmin(sol.L_hat))
+                j_min = int(np.argmin(new_RR))
                 sol.assignment[i] = j_min
                 sol.mu_sum[j_min] += task.mu
                 sol.sigma_sq_sum[j_min] += task.sigma ** 2

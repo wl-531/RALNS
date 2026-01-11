@@ -186,11 +186,24 @@ class StdLNSSolver(BaseSolver):
             sol.assignment[i] = -1
 
         # Repair：按 mu 降序重新插入，选择使期望负载最小的服务器
+        # BUG FIX: 第一个任务禁止返回 j_max，否则 LNS 无效
         repair_order = sorted(destroy_tasks, key=lambda i: -tasks[i].mu)
+        is_first = True
         for i in repair_order:
             task = tasks[i]
             new_L_exp = sol.L_exp + task.mu
-            best_j = int(np.argmin(new_L_exp))
+
+            if is_first:
+                # 第一个任务：排除 j_max，选择其他服务器中负载最小的
+                candidates = [j for j in range(sol.m) if j != j_max]
+                if candidates:
+                    best_j = min(candidates, key=lambda j: new_L_exp[j])
+                else:
+                    best_j = int(np.argmin(new_L_exp))
+                is_first = False
+            else:
+                best_j = int(np.argmin(new_L_exp))
+
             sol.assignment[i] = best_j
             sol.mu_sum[best_j] += task.mu
 

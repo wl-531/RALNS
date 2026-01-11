@@ -53,7 +53,7 @@ def plot_main_comparison(csv_path="results_main.csv"):
     ax.set_ylabel("System CVR", fontsize=11)
     ax.set_xticks(x)
     ax.set_xticklabels(algorithms, fontsize=10)
-    ax.set_ylim(0, max(cvr_means) * 1.4)
+    ax.set_ylim(0, max(cvr_means) * 1.4 + 0.025)
     ax.legend(fontsize=9, loc="upper right")
 
     for i, (m, s) in enumerate(zip(cvr_means, cvr_stds)):
