@@ -121,7 +121,7 @@ def plot_ablation(csv_path="results_ablation.csv"):
     ax.set_xticks(x)
     labels = ["Construct\n-Only", "Micro\n-Only", "Random\n-Destroy", "RA-LNS\n(Full)"]
     ax.set_xticklabels(labels, fontsize=9)
-    ax.set_ylim(0, max(means) * 1.4)
+    ax.set_ylim(0, max(means) * 1.4 + 0.04)
     ax.legend(fontsize=9)
 
     for i, (m, s) in enumerate(zip(means, stds)):
