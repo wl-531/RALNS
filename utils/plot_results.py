@@ -16,12 +16,13 @@ ALPHA_TARGET = 0.15
 COLORS_MAIN = {
     "DG": "#1f77b4",
     "RG": "#ff7f0e",
+    "EPD-FF": "#9467bd",
     "Std-LNS": "#2ca02c",
     "RA-LNS": "#d62728",
 }
 
 COLORS_ABLATION = ["#c6dbef", "#6baed6", "#2171b5", "#d62728"]
-MARKERS = ["o", "s", "^", "D"]
+MARKERS = ["o", "s", "D", "p", "h"]  # 圆、方、菱、五边形、六边形
 
 os.makedirs("figures", exist_ok=True)
 
@@ -36,7 +37,7 @@ def plot_main_comparison(csv_path="results_main.csv"):
         "time_mean_ms": "mean",
     }).round(4)
 
-    algorithms = ["DG", "RG", "Std-LNS", "RA-LNS"]
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
 
     cvr_means = [summary.loc[a, ("cvr_mean", "mean")] for a in algorithms]
     cvr_stds = [summary.loc[a, ("cvr_mean", "std")] for a in algorithms]
@@ -79,12 +80,12 @@ def plot_backlog_evolution(csv_path="results_backlog.csv"):
 
     fig, ax = plt.subplots(figsize=FIGSIZE_WIDE)
 
-    algorithms = ["DG", "RG", "Std-LNS", "RA-LNS"]
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
     periods = df.index.values
 
     for i, algo in enumerate(algorithms):
-        ax.plot(periods, df[algo].values, marker=MARKERS[i], markevery=10,
-                color=COLORS_MAIN[algo], label=algo, linewidth=1.5, markersize=5)
+        ax.plot(periods, df[algo].values,
+                color=COLORS_MAIN[algo], label=algo, linewidth=1.5)
 
     ax.set_xlabel("Decision Period (t)", fontsize=11)
     ax.set_ylabel("System Backlog", fontsize=11)
@@ -140,7 +141,7 @@ def plot_boxplot_comparison(csv_path="results_main.csv"):
 
     fig, ax = plt.subplots(figsize=FIGSIZE_SINGLE)
 
-    algorithms = ["DG", "RG", "Std-LNS", "RA-LNS"]
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
     data = [df[df["algorithm"] == a]["cvr_mean"].values for a in algorithms]
     colors = [COLORS_MAIN[a] for a in algorithms]
 

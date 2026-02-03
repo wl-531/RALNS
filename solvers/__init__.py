@@ -1,6 +1,7 @@
 from .base import BaseSolver
 from .dg import DGSolver
 from .rg import RGSolver
+from .epd_ff import EPDFFSolver
 from .ra_lns import RALNSSolver
 from .micro_lns import MicroLNSSolver
 from .std_lns import StdLNSSolver

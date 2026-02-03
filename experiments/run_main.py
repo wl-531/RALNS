@@ -11,7 +11,7 @@ from copy import deepcopy
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, MAIN_CONFIG,
                     DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K)
 from data.generator import generate_batch, generate_servers_with_target_rho
-from solvers import DGSolver, RGSolver, StdLNSSolver, RALNSSolver
+from solvers import DGSolver, RGSolver, EPDFFSolver, StdLNSSolver, RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
 
 
@@ -66,6 +66,7 @@ def run_main_experiment(seed=42, verbose=True):
     algorithms = {
         'DG': DGSolver(),
         'RG': RGSolver(kappa=KAPPA),
+        'EPD-FF': EPDFFSolver(kappa=KAPPA),
         'Std-LNS': StdLNSSolver(t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
         'RA-LNS': RALNSSolver(kappa=KAPPA, t_max=T_MAX, patience=PATIENCE, destroy_k=DESTROY_K),
     }
@@ -139,7 +140,7 @@ def run_main_experiment(seed=42, verbose=True):
     if backlog_data:
         df_backlog = pd.DataFrame(backlog_data)
         df_backlog_pivot = df_backlog.pivot(index='period', columns='algorithm', values='backlog')
-        df_backlog_pivot = df_backlog_pivot[['DG', 'RG', 'Std-LNS', 'RA-LNS']]  # 确保顺序
+        df_backlog_pivot = df_backlog_pivot[['DG', 'RG', 'EPD-FF', 'Std-LNS', 'RA-LNS']]  # 确保顺序
         df_backlog_pivot.to_csv('results_backlog.csv')
 
     if verbose:
