@@ -54,6 +54,12 @@ def compute_metrics(assignment: List[int], tasks: List[Task],
     L_bar = np.mean(L_hat)
     O2 = float(np.sum((L_hat - L_bar) ** 2))
 
+    # 新增指标
+    exp_makespan = float(np.max(L0 + mu_sum))  # 期望 makespan（含 backlog）
+    util_new = float(np.mean(mu_sum / C))  # 新任务利用率
+    util_total = float(np.mean((L0 + mu_sum) / C))  # 总期望利用率（含 backlog）
+    robust_util_total = float(np.mean(L_hat / C))  # 总鲁棒利用率（含 backlog）
+
     return {
         'feasible': feasible,
         'U_max': U_max,
@@ -62,5 +68,9 @@ def compute_metrics(assignment: List[int], tasks: List[Task],
         'O2': O2,
         'L_hat': L_hat,
         'Gap': Gap,
-        'RD': RD
+        'RD': RD,
+        'exp_makespan': exp_makespan,
+        'util_new': util_new,
+        'util_total': util_total,
+        'robust_util_total': robust_util_total,
     }

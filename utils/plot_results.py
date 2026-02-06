@@ -1,9 +1,12 @@
-"""论文图表生成脚本 - 3 张核心图表"""
+"""论文图表生成脚本 - 核心图表 + 扩展图表"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 import os
+
+from config import T_MAX
+T_MAX_MS = T_MAX * 1000 if T_MAX < 10 else T_MAX
 
 matplotlib.rcParams["pdf.fonttype"] = 42
 matplotlib.rcParams["ps.fonttype"] = 42
@@ -164,29 +167,221 @@ def plot_boxplot_comparison(csv_path="results_main.csv"):
     print("Generated: figures/fig_boxplot.pdf")
 
 
+def print_efficiency_table(csv_path="results_main.csv"):
+    """Table 2: Efficiency Metrics（生成 LaTeX 表格）"""
+    df = pd.read_csv(csv_path)
+
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
+
+    summary = df.groupby("algorithm").agg({
+        "cvr_mean": "mean",
+        "O1_mean": "mean",
+        "exp_makespan_mean": "mean",
+        "robust_util_total_mean": "mean",
+        "time_mean_ms": "mean",
+    }).round(4)
+
+    dg_o1 = summary.loc["DG", "O1_mean"]
+
+    print("\n" + "="*70)
+    print("Table 2: Efficiency Metrics")
+    print("="*70)
+    print(f"{'Algorithm':<10} {'CVR':>8} {'O1':>10} {'O1/DG':>8} {'ExpMS':>10} {'RobUtil':>8} {'Time(ms)':>10}")
+    print("-"*70)
+    for a in algorithms:
+        row = summary.loc[a]
+        o1_ratio = row['O1_mean'] / dg_o1
+        print(f"{a:<10} {row['cvr_mean']:>8.3f} {row['O1_mean']:>10.1f} {o1_ratio:>8.2f} "
+              f"{row['exp_makespan_mean']:>10.1f} {row['robust_util_total_mean']:>8.3f} "
+              f"{row['time_mean_ms']:>10.2f}")
+    print("="*70)
+
+    print("\n% LaTeX Table")
+    print("\\begin{tabular}{lcccccc}")
+    print("\\toprule")
+    print("Algorithm & CVR $\\downarrow$ & $O_1$ & $O_1$/DG & Exp.MS & Rob.Util & Time (ms) \\\\")
+    print("\\midrule")
+    for a in algorithms:
+        row = summary.loc[a]
+        o1_ratio = row['O1_mean'] / dg_o1
+        print(f"{a} & {row['cvr_mean']:.3f} & {row['O1_mean']:.1f} & {o1_ratio:.2f} & "
+              f"{row['exp_makespan_mean']:.1f} & {row['robust_util_total_mean']:.3f} & "
+              f"{row['time_mean_ms']:.2f} \\\\")
+    print("\\bottomrule")
+    print("\\end{tabular}")
+
+
+def print_runtime_table(csv_path="results_main.csv"):
+    """Table 3: Runtime Distribution"""
+    df = pd.read_csv(csv_path)
+
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
+
+    summary = df.groupby("algorithm").agg({
+        "time_mean_ms": "mean",
+        "time_std_ms": "mean",
+        "time_p50_ms": "mean",
+        "time_p99_ms": "mean",
+        "time_max_ms": "mean",
+        "timeout_rate": "mean",
+    }).round(3)
+
+    print("\n" + "="*85)
+    print(f"Table 3: Runtime Distribution (Budget = {T_MAX_MS:.0f} ms)")
+    print("="*85)
+    print(f"{'Algorithm':<10} {'Mean':>8} {'Std':>8} {'p50':>8} {'p99':>8} {'Max':>8} {'Timeout':>10}")
+    print("-"*85)
+    for a in algorithms:
+        row = summary.loc[a]
+        timeout_str = f"{row['timeout_rate']*100:.1f}%"
+        print(f"{a:<10} {row['time_mean_ms']:>8.2f} {row['time_std_ms']:>8.2f} "
+              f"{row['time_p50_ms']:>8.2f} {row['time_p99_ms']:>8.2f} "
+              f"{row['time_max_ms']:>8.2f} {timeout_str:>10}")
+    print("="*85)
+
+    print("\n% LaTeX Table")
+    print("\\begin{tabular}{lcccccc}")
+    print("\\toprule")
+    print("Algorithm & Mean & Std & p50 & p99 & Max & Timeout \\\\")
+    print("\\midrule")
+    for a in algorithms:
+        row = summary.loc[a]
+        timeout_str = f"{row['timeout_rate']*100:.1f}\\%"
+        print(f"{a} & {row['time_mean_ms']:.2f} & {row['time_std_ms']:.2f} & "
+              f"{row['time_p50_ms']:.2f} & {row['time_p99_ms']:.2f} & "
+              f"{row['time_max_ms']:.2f} & {timeout_str} \\\\")
+    print("\\bottomrule")
+    print("\\end{tabular}")
+
+
+def plot_alpha_pareto(csv_path="results_alpha_sweep.csv"):
+    """Figure 4: α-sweep Pareto 曲线"""
+    df = pd.read_csv(csv_path)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+
+    # (a) CVR vs Robust Utilization
+    ax = axes[0]
+    for algo in ["DG", "RG", "RA-LNS"]:
+        data = df[df["algorithm"] == algo].groupby("alpha")[["cvr_mean", "robust_util_total_mean"]].mean()
+        ax.plot(data["robust_util_total_mean"], data["cvr_mean"], 'o-',
+                label=algo, color=COLORS_MAIN.get(algo, "gray"), markersize=8, linewidth=2)
+
+        if algo == "RA-LNS":
+            for alpha, row in data.iterrows():
+                ax.annotate(f"α={alpha}", (row["robust_util_total_mean"], row["cvr_mean"]),
+                           textcoords="offset points", xytext=(5, 5), fontsize=8)
+
+    ax.set_xlabel("Average Robust Utilization", fontsize=11)
+    ax.set_ylabel("System CVR", fontsize=11)
+    ax.set_title("(a) CVR vs. Utilization Trade-off", fontsize=11)
+    ax.legend(fontsize=9, loc="upper left")
+    ax.grid(True, alpha=0.3)
+
+    # (b) CVR vs Makespan
+    ax = axes[1]
+    dg_makespan_baseline = df[df["algorithm"] == "DG"]["makespan_mean"].mean()
+
+    for algo in ["DG", "RG", "RA-LNS"]:
+        data = df[df["algorithm"] == algo].groupby("alpha")[["cvr_mean", "makespan_mean"]].mean()
+        data["norm_makespan"] = data["makespan_mean"] / dg_makespan_baseline
+        ax.plot(data["norm_makespan"], data["cvr_mean"], 'o-',
+                label=algo, color=COLORS_MAIN.get(algo, "gray"), markersize=8, linewidth=2)
+
+    ax.axvline(x=1.0, color="gray", linestyle="--", linewidth=1, alpha=0.5)
+    ax.set_xlabel("Normalized Makespan (rel. to DG)", fontsize=11)
+    ax.set_ylabel("System CVR", fontsize=11)
+    ax.set_title("(b) CVR vs. Makespan Trade-off", fontsize=11)
+    ax.legend(fontsize=9, loc="upper right")
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig("figures/fig4_alpha_pareto.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig4_alpha_pareto.png", bbox_inches="tight", dpi=300)
+    plt.close()
+    print("Generated: figures/fig4_alpha_pareto.pdf")
+
+
+def plot_scalability(csv_path="results_scalability.csv"):
+    """Figure 5: 可扩展性实验"""
+    df = pd.read_csv(csv_path)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    algorithms = ["DG", "RG", "EPD-FF", "RA-LNS"]
+
+    # (a) CVR vs M
+    ax = axes[0]
+    for algo in algorithms:
+        data = df[df["algorithm"] == algo].groupby("M")["cvr_mean"].agg(["mean", "std"])
+        ax.errorbar(data.index, data["mean"], yerr=data["std"],
+                   fmt='o-', label=algo, color=COLORS_MAIN.get(algo, "gray"),
+                   capsize=3, markersize=6, linewidth=1.5)
+
+    ax.set_xlabel("Number of Servers (M)", fontsize=11)
+    ax.set_ylabel("System CVR", fontsize=11)
+    ax.set_title("(a) CVR vs. Cluster Size", fontsize=11)
+    ax.legend(fontsize=9, loc="upper right")
+    ax.set_xticks([5, 10, 20, 50])
+    ax.grid(True, alpha=0.3)
+
+    # (b) Runtime vs M
+    ax = axes[1]
+    for algo in algorithms:
+        data = df[df["algorithm"] == algo].groupby("M")["time_mean_ms"].agg(["mean", "std"])
+        ax.errorbar(data.index, data["mean"], yerr=data["std"],
+                   fmt='o-', label=algo, color=COLORS_MAIN.get(algo, "gray"),
+                   capsize=3, markersize=6, linewidth=1.5)
+
+    ax.axhline(y=T_MAX_MS, color="red", linestyle="--", linewidth=1.5,
+               label=f"Budget ({T_MAX_MS:.0f}ms)")
+    ax.set_xlabel("Number of Servers (M)", fontsize=11)
+    ax.set_ylabel("Mean Runtime (ms)", fontsize=11)
+    ax.set_title("(b) Runtime vs. Cluster Size", fontsize=11)
+    ax.legend(fontsize=9, loc="upper left")
+    ax.set_xticks([5, 10, 20, 50])
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig("figures/fig5_scalability.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig5_scalability.png", bbox_inches="tight", dpi=300)
+    plt.close()
+    print("Generated: figures/fig5_scalability.pdf")
+
+    print("\n===== Scalability Summary =====")
+    print("\nCVR by (M, Algorithm):")
+    print(df.groupby(['M', 'algorithm'])['cvr_mean'].mean().unstack().round(4))
+    print("\nRuntime (ms) by (M, Algorithm):")
+    print(df.groupby(['M', 'algorithm'])['time_mean_ms'].mean().unstack().round(2))
+    print("\nTimeout Rate by (M, Algorithm):")
+    print(df.groupby(['M', 'algorithm'])['timeout_rate'].mean().unstack().round(4))
+
+
 def generate_all_figures():
     """生成所有图表"""
-    print("=" * 50)
-    print("Generating Paper Figures")
-    print("=" * 50)
+    print("=" * 60)
+    print("Generating Paper Figures (Tier-0 + Tier-1)")
+    print("=" * 60)
 
     files = {
         "main": "results_main.csv",
         "backlog": "results_backlog.csv",
         "ablation": "results_ablation.csv",
+        "alpha_sweep": "results_alpha_sweep.csv",
+        "scalability": "results_scalability.csv",
     }
 
     for name, path in files.items():
-        if os.path.exists(path):
-            print(f"Found: {path}")
-        else:
-            print(f"Missing: {path}")
+        status = "OK" if os.path.exists(path) else "MISSING"
+        print(f"  [{status}] {path}")
 
-    print("-" * 50)
+    print("-" * 60)
 
+    # 现有图表
     if os.path.exists(files["main"]):
         plot_main_comparison(files["main"])
         plot_boxplot_comparison(files["main"])
+        print_efficiency_table(files["main"])
+        print_runtime_table(files["main"])
 
     if os.path.exists(files["backlog"]):
         plot_backlog_evolution(files["backlog"])
@@ -194,9 +389,16 @@ def generate_all_figures():
     if os.path.exists(files["ablation"]):
         plot_ablation(files["ablation"])
 
-    print("=" * 50)
+    # 新增图表
+    if os.path.exists(files["alpha_sweep"]):
+        plot_alpha_pareto(files["alpha_sweep"])
+
+    if os.path.exists(files["scalability"]):
+        plot_scalability(files["scalability"])
+
+    print("=" * 60)
     print("Done! Check figures/ directory")
-    print("=" * 50)
+    print("=" * 60)
 
 
 if __name__ == "__main__":

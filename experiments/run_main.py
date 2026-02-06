@@ -10,6 +10,11 @@ from copy import deepcopy
 
 from config import (KAPPA, N_PERIODS, N_RUNS, MC_SAMPLES, MAIN_CONFIG,
                     DECISION_INTERVAL, T_MAX, PATIENCE, DESTROY_K)
+
+# 明确转换为毫秒
+# T_MAX 在 config 中是秒（如 0.100 表示 100ms），需要 *1000
+# 如果 T_MAX 已经是毫秒（>=10），则直接使用
+T_MAX_MS = T_MAX * 1000 if T_MAX < 10 else T_MAX
 from data.generator import generate_batch, generate_servers_with_target_rho
 from solvers import DGSolver, RGSolver, EPDFFSolver, StdLNSSolver, RALNSSolver
 from evaluation import compute_metrics, monte_carlo_verify, compute_next_backlog
@@ -23,7 +28,11 @@ def run_online_simulation(solver, tasks_list, servers_init, n_periods):
     results = {
         'cvr': [], 'per_server_vr': [], 'excess': [],
         'U_max': [], 'O1': [], 'time_ms': [], 'feasible': [],
-        'backlog': []  # 每周期开始时的系统总 backlog
+        'backlog': [],  # 每周期开始时的系统总 backlog
+        'exp_makespan': [],
+        'util_new': [],
+        'util_total': [],
+        'robust_util_total': [],
     }
 
     for t in range(n_periods):
@@ -49,6 +58,10 @@ def run_online_simulation(solver, tasks_list, servers_init, n_periods):
         results['O1'].append(metrics['O1'])
         results['time_ms'].append(solve_time)
         results['feasible'].append(metrics['feasible'])
+        results['exp_makespan'].append(metrics['exp_makespan'])
+        results['util_new'].append(metrics['util_new'])
+        results['util_total'].append(metrics['util_total'])
+        results['robust_util_total'].append(metrics['robust_util_total'])
 
         next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
         for j in range(m):
@@ -102,6 +115,7 @@ def run_main_experiment(seed=42, verbose=True):
 
             results = run_online_simulation(solver, tasks_list, servers_init, N_PERIODS)
 
+            time_arr = np.array(results['time_ms'], dtype=float)
             row = {
                 'algorithm': algo_name,
                 'run': run_idx,
@@ -111,9 +125,19 @@ def run_main_experiment(seed=42, verbose=True):
                 'U_max_mean': np.mean(results['U_max']),
                 'O1_mean': np.mean(results['O1']),
                 'excess_mean': np.mean(results['excess']),
-                'time_mean_ms': np.mean(results['time_ms']),
-                'time_p99_ms': np.percentile(results['time_ms'], 99),
+                'time_mean_ms': np.mean(time_arr),
+                'time_p99_ms': np.percentile(time_arr, 99),
                 'feasible_rate': np.mean(results['feasible']),
+                # E1 新增指标
+                'exp_makespan_mean': np.mean(results['exp_makespan']),
+                'util_new_mean': np.mean(results['util_new']),
+                'util_total_mean': np.mean(results['util_total']),
+                'robust_util_total_mean': np.mean(results['robust_util_total']),
+                # E2 完整 runtime 统计
+                'time_std_ms': float(np.std(time_arr)),
+                'time_p50_ms': float(np.percentile(time_arr, 50)),
+                'time_max_ms': float(np.max(time_arr)),
+                'timeout_rate': float(np.mean(time_arr >= T_MAX_MS * 0.999)),
             }
             all_results.append(row)
 
@@ -131,7 +155,7 @@ def run_main_experiment(seed=42, verbose=True):
             for algo_name in algorithms.keys():
                 row = [r for r in all_results if r['algorithm'] == algo_name and r['run'] == 0][0]
                 print(f"    {algo_name}: CVR={row['cvr_mean']:.4f}, U_max={row['U_max_mean']:.3f}, "
-                      f"Time={row['time_mean_ms']:.2f}ms")
+                      f"robust_util={row['robust_util_total_mean']:.3f}, Time={row['time_mean_ms']:.2f}ms")
 
     df = pd.DataFrame(all_results)
     df.to_csv('results_main.csv', index=False)
