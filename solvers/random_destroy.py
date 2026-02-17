@@ -140,7 +140,7 @@ class RandomDestroySolver(RALNSSolver):
             sol.sigma_sq_sum[j] -= task.sigma ** 2
             sol.assignment[i] = -1
 
-        # Repair: 使用 min new_RR_j
+        # Repair: 使用 min new_RD_j
         repair_order = sorted(destroy_tasks, key=lambda i: tasks[i].sigma, reverse=True)
         is_first = True
 
@@ -148,9 +148,9 @@ class RandomDestroySolver(RALNSSolver):
             task = tasks[i]
 
             best_j = None
-            best_new_rr = np.inf
+            best_new_rd = np.inf
             fallback_j = None
-            fallback_new_rr = np.inf
+            fallback_new_rd = np.inf
 
             for j in range(sol.m):
                 new_sigma_sq_j = sol.sigma_sq_sum[j] + task.sigma ** 2
@@ -162,17 +162,17 @@ class RandomDestroySolver(RALNSSolver):
                 if new_Gap_j < -EPS_TOL:
                     continue
 
-                new_margin_j = sol.C[j] - (sol.L0[j] + new_mu_j)
-                new_RR_j = new_sigma_j / max(new_margin_j, EPS_DIV)
+                # RD_j = sigma_j / Gap_j (含 κ，与 Level-1 目标一致)
+                new_RD_j = new_sigma_j / max(new_Gap_j, EPS_DIV)
 
                 if is_first and j == j_hot:
-                    if fallback_j is None or new_RR_j < fallback_new_rr:
+                    if fallback_j is None or new_RD_j < fallback_new_rd:
                         fallback_j = j
-                        fallback_new_rr = new_RR_j
+                        fallback_new_rd = new_RD_j
                     continue
 
-                if new_RR_j < best_new_rr:
-                    best_new_rr = new_RR_j
+                if new_RD_j < best_new_rd:
+                    best_new_rd = new_RD_j
                     best_j = j
 
             if best_j is None and fallback_j is not None:

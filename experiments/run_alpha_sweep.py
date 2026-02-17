@@ -58,6 +58,7 @@ def run_alpha_sweep(seed=42, verbose=True):
 
                 cvr_list, robust_util_list, makespan_list = [], [], []
                 util_total_list, exp_makespan_list = [], []
+                robust_load_ratio_list = []
 
                 for t in range(N_PERIODS):
                     tasks = tasks_list[t]
@@ -72,6 +73,7 @@ def run_alpha_sweep(seed=42, verbose=True):
                     makespan_list.append(metrics['O1'])
                     util_total_list.append(metrics['util_total'])
                     exp_makespan_list.append(metrics['exp_makespan'])
+                    robust_load_ratio_list.append(metrics['robust_load_ratio'])
 
                     # 更新 backlog
                     next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
@@ -89,6 +91,7 @@ def run_alpha_sweep(seed=42, verbose=True):
                     'makespan_mean': np.mean(makespan_list),
                     'util_total_mean': np.mean(util_total_list),
                     'exp_makespan_mean': np.mean(exp_makespan_list),
+                    'robust_load_ratio_mean': np.mean(robust_load_ratio_list),
                 })
 
         if verbose and run_idx == 0:

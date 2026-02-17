@@ -1,9 +1,12 @@
 """论文图表生成脚本 - 核心图表 + 扩展图表"""
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
-import os
 
 from config import T_MAX
 T_MAX_MS = T_MAX * 1000 if T_MAX < 10 else T_MAX
@@ -173,42 +176,45 @@ def print_efficiency_table(csv_path="results_main.csv"):
 
     algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
 
-    summary = df.groupby("algorithm").agg({
-        "cvr_mean": "mean",
-        "O1_mean": "mean",
-        "exp_makespan_mean": "mean",
-        "robust_util_total_mean": "mean",
-        "time_mean_ms": "mean",
-    }).round(4)
+    agg_dict = {"cvr_mean": "mean", "O1_mean": "mean", "time_mean_ms": "mean"}
+    # 兼容：有些列可能不存在
+    for col in ["exp_makespan_mean", "robust_util_total_mean", "U_max_mean"]:
+        if col in df.columns:
+            agg_dict[col] = "mean"
 
+    summary = df.groupby("algorithm").agg(agg_dict).round(4)
     dg_o1 = summary.loc["DG", "O1_mean"]
+
+    has_exp_ms = "exp_makespan_mean" in summary.columns
+    has_rob_util = "robust_util_total_mean" in summary.columns
+    has_umax = "U_max_mean" in summary.columns
 
     print("\n" + "="*70)
     print("Table 2: Efficiency Metrics")
     print("="*70)
-    print(f"{'Algorithm':<10} {'CVR':>8} {'O1':>10} {'O1/DG':>8} {'ExpMS':>10} {'RobUtil':>8} {'Time(ms)':>10}")
+    header = f"{'Algorithm':<10} {'CVR':>8} {'O1':>10} {'O1/DG':>8}"
+    if has_exp_ms:
+        header += f" {'ExpMS':>10}"
+    if has_rob_util:
+        header += f" {'RobUtil':>8}"
+    elif has_umax:
+        header += f" {'U_max':>8}"
+    header += f" {'Time(ms)':>10}"
+    print(header)
     print("-"*70)
     for a in algorithms:
         row = summary.loc[a]
         o1_ratio = row['O1_mean'] / dg_o1
-        print(f"{a:<10} {row['cvr_mean']:>8.3f} {row['O1_mean']:>10.1f} {o1_ratio:>8.2f} "
-              f"{row['exp_makespan_mean']:>10.1f} {row['robust_util_total_mean']:>8.3f} "
-              f"{row['time_mean_ms']:>10.2f}")
+        line = f"{a:<10} {row['cvr_mean']:>8.3f} {row['O1_mean']:>10.1f} {o1_ratio:>8.2f}"
+        if has_exp_ms:
+            line += f" {row['exp_makespan_mean']:>10.1f}"
+        if has_rob_util:
+            line += f" {row['robust_util_total_mean']:>8.3f}"
+        elif has_umax:
+            line += f" {row['U_max_mean']:>8.3f}"
+        line += f" {row['time_mean_ms']:>10.2f}"
+        print(line)
     print("="*70)
-
-    print("\n% LaTeX Table")
-    print("\\begin{tabular}{lcccccc}")
-    print("\\toprule")
-    print("Algorithm & CVR $\\downarrow$ & $O_1$ & $O_1$/DG & Exp.MS & Rob.Util & Time (ms) \\\\")
-    print("\\midrule")
-    for a in algorithms:
-        row = summary.loc[a]
-        o1_ratio = row['O1_mean'] / dg_o1
-        print(f"{a} & {row['cvr_mean']:.3f} & {row['O1_mean']:.1f} & {o1_ratio:.2f} & "
-              f"{row['exp_makespan_mean']:.1f} & {row['robust_util_total_mean']:.3f} & "
-              f"{row['time_mean_ms']:.2f} \\\\")
-    print("\\bottomrule")
-    print("\\end{tabular}")
 
 
 def print_runtime_table(csv_path="results_main.csv"):
@@ -217,135 +223,117 @@ def print_runtime_table(csv_path="results_main.csv"):
 
     algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
 
-    summary = df.groupby("algorithm").agg({
-        "time_mean_ms": "mean",
-        "time_std_ms": "mean",
-        "time_p50_ms": "mean",
-        "time_p99_ms": "mean",
-        "time_max_ms": "mean",
-        "timeout_rate": "mean",
-    }).round(3)
+    # 只聚合存在的列
+    time_cols = ["time_mean_ms", "time_std_ms", "time_p50_ms", "time_p99_ms",
+                 "time_max_ms", "timeout_rate"]
+    agg_dict = {c: "mean" for c in time_cols if c in df.columns}
+
+    summary = df.groupby("algorithm").agg(agg_dict).round(3)
 
     print("\n" + "="*85)
     print(f"Table 3: Runtime Distribution (Budget = {T_MAX_MS:.0f} ms)")
     print("="*85)
-    print(f"{'Algorithm':<10} {'Mean':>8} {'Std':>8} {'p50':>8} {'p99':>8} {'Max':>8} {'Timeout':>10}")
+
+    # 动态构建表头和行
+    available = [c for c in time_cols if c in summary.columns]
+    col_labels = {"time_mean_ms": "Mean", "time_std_ms": "Std", "time_p50_ms": "p50",
+                  "time_p99_ms": "p99", "time_max_ms": "Max", "timeout_rate": "Timeout"}
+    header = f"{'Algorithm':<10}" + "".join(f" {col_labels[c]:>8}" for c in available)
+    print(header)
     print("-"*85)
     for a in algorithms:
         row = summary.loc[a]
-        timeout_str = f"{row['timeout_rate']*100:.1f}%"
-        print(f"{a:<10} {row['time_mean_ms']:>8.2f} {row['time_std_ms']:>8.2f} "
-              f"{row['time_p50_ms']:>8.2f} {row['time_p99_ms']:>8.2f} "
-              f"{row['time_max_ms']:>8.2f} {timeout_str:>10}")
+        line = f"{a:<10}"
+        for c in available:
+            if c == "timeout_rate":
+                line += f" {row[c]*100:>7.1f}%"
+            else:
+                line += f" {row[c]:>8.2f}"
+        print(line)
     print("="*85)
-
-    print("\n% LaTeX Table")
-    print("\\begin{tabular}{lcccccc}")
-    print("\\toprule")
-    print("Algorithm & Mean & Std & p50 & p99 & Max & Timeout \\\\")
-    print("\\midrule")
-    for a in algorithms:
-        row = summary.loc[a]
-        timeout_str = f"{row['timeout_rate']*100:.1f}\\%"
-        print(f"{a} & {row['time_mean_ms']:.2f} & {row['time_std_ms']:.2f} & "
-              f"{row['time_p50_ms']:.2f} & {row['time_p99_ms']:.2f} & "
-              f"{row['time_max_ms']:.2f} & {timeout_str} \\\\")
-    print("\\bottomrule")
-    print("\\end{tabular}")
 
 
 def plot_alpha_pareto(csv_path="results_alpha_sweep.csv"):
     """Figure 4: α-sweep Pareto 曲线"""
     df = pd.read_csv(csv_path)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(5, 4))
 
-    # (a) CVR vs Robust Utilization
-    ax = axes[0]
-    for algo in ["DG", "RG", "RA-LNS"]:
-        data = df[df["algorithm"] == algo].groupby("alpha")[["cvr_mean", "robust_util_total_mean"]].mean()
-        ax.plot(data["robust_util_total_mean"], data["cvr_mean"], 'o-',
-                label=algo, color=COLORS_MAIN.get(algo, "gray"), markersize=8, linewidth=2)
+    # RA-LNS 曲线（随 α 变化）
+    ralns = df[df["algorithm"] == "RA-LNS"].groupby("alpha")[["cvr_mean", "robust_load_ratio_mean"]].mean()
+    ax.plot(ralns["robust_load_ratio_mean"], ralns["cvr_mean"], 'o-',
+            color=COLORS_MAIN.get("RA-LNS", "#2ecc71"), markersize=8, linewidth=2, label="RA-LNS")
 
-        if algo == "RA-LNS":
-            for alpha, row in data.iterrows():
-                ax.annotate(f"α={alpha}", (row["robust_util_total_mean"], row["cvr_mean"]),
-                           textcoords="offset points", xytext=(5, 5), fontsize=8)
+    # 标注 α 值
+    for alpha, row in ralns.iterrows():
+        ax.annotate(f"α={alpha}", (row["robust_load_ratio_mean"], row["cvr_mean"]),
+                   textcoords="offset points", xytext=(5, 3), fontsize=8)
 
-    ax.set_xlabel("Average Robust Utilization", fontsize=11)
+    # DG 参考点（静态，不受 α 影响）
+    dg = df[df["algorithm"] == "DG"]
+    dg_util = dg["robust_load_ratio_mean"].mean()
+    dg_cvr = dg["cvr_mean"].mean()
+    ax.scatter([dg_util], [dg_cvr], marker='o', s=60, color='gray',
+               zorder=5, label="DG (baseline)")
+
+    ax.set_xlabel("Robust Load Ratio", fontsize=11)
     ax.set_ylabel("System CVR", fontsize=11)
-    ax.set_title("(a) CVR vs. Utilization Trade-off", fontsize=11)
     ax.legend(fontsize=9, loc="upper left")
     ax.grid(True, alpha=0.3)
 
-    # (b) CVR vs Makespan
-    ax = axes[1]
-    dg_makespan_baseline = df[df["algorithm"] == "DG"]["makespan_mean"].mean()
-
-    for algo in ["DG", "RG", "RA-LNS"]:
-        data = df[df["algorithm"] == algo].groupby("alpha")[["cvr_mean", "makespan_mean"]].mean()
-        data["norm_makespan"] = data["makespan_mean"] / dg_makespan_baseline
-        ax.plot(data["norm_makespan"], data["cvr_mean"], 'o-',
-                label=algo, color=COLORS_MAIN.get(algo, "gray"), markersize=8, linewidth=2)
-
-    ax.axvline(x=1.0, color="gray", linestyle="--", linewidth=1, alpha=0.5)
-    ax.set_xlabel("Normalized Makespan (rel. to DG)", fontsize=11)
-    ax.set_ylabel("System CVR", fontsize=11)
-    ax.set_title("(b) CVR vs. Makespan Trade-off", fontsize=11)
-    ax.legend(fontsize=9, loc="upper right")
-    ax.grid(True, alpha=0.3)
-
     plt.tight_layout()
-    plt.savefig("figures/fig4_alpha_pareto.pdf", bbox_inches="tight", dpi=300)
-    plt.savefig("figures/fig4_alpha_pareto.png", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig4_alpha_tradeoff.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig4_alpha_tradeoff.png", bbox_inches="tight", dpi=300)
     plt.close()
-    print("Generated: figures/fig4_alpha_pareto.pdf")
+    print("Generated: figures/fig4_alpha_tradeoff.pdf")
 
 
 def plot_scalability(csv_path="results_scalability.csv"):
     """Figure 5: 可扩展性实验"""
     df = pd.read_csv(csv_path)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    algorithms = ["DG", "RG", "EPD-FF", "RA-LNS"]
+    algorithms = ["DG", "RG", "EPD-FF", "Std-LNS", "RA-LNS"]
 
-    # (a) CVR vs M
-    ax = axes[0]
+    # fig5(a): CVR vs M
+    fig, ax = plt.subplots(figsize=(5, 3.5))
     for algo in algorithms:
-        data = df[df["algorithm"] == algo].groupby("M")["cvr_mean"].agg(["mean", "std"])
-        ax.errorbar(data.index, data["mean"], yerr=data["std"],
-                   fmt='o-', label=algo, color=COLORS_MAIN.get(algo, "gray"),
-                   capsize=3, markersize=6, linewidth=1.5)
+        data = df[df["algorithm"] == algo].groupby("M")["cvr_mean"].mean()
+        ax.plot(data.index, data.values, 'o-', label=algo,
+                color=COLORS_MAIN.get(algo, "gray"), markersize=6, linewidth=1.5)
 
     ax.set_xlabel("Number of Servers (M)", fontsize=11)
     ax.set_ylabel("System CVR", fontsize=11)
     ax.set_title("(a) CVR vs. Cluster Size", fontsize=11)
     ax.legend(fontsize=9, loc="upper right")
     ax.set_xticks([5, 10, 20, 50])
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax + 0.2)
     ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("figures/fig5a_scalability_cvr.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig5a_scalability_cvr.png", bbox_inches="tight", dpi=300)
+    plt.close()
+    print("Generated: figures/fig5a_scalability_cvr.pdf")
 
-    # (b) Runtime vs M
-    ax = axes[1]
+    # fig5(b): Runtime vs M
+    fig, ax = plt.subplots(figsize=(5, 3.5))
     for algo in algorithms:
-        data = df[df["algorithm"] == algo].groupby("M")["time_mean_ms"].agg(["mean", "std"])
-        ax.errorbar(data.index, data["mean"], yerr=data["std"],
-                   fmt='o-', label=algo, color=COLORS_MAIN.get(algo, "gray"),
-                   capsize=3, markersize=6, linewidth=1.5)
+        data = df[df["algorithm"] == algo].groupby("M")["time_mean_ms"].mean()
+        ax.plot(data.index, data.values, 'o-', label=algo,
+                color=COLORS_MAIN.get(algo, "gray"), markersize=6, linewidth=1.5)
 
-    ax.axhline(y=T_MAX_MS, color="red", linestyle="--", linewidth=1.5,
-               label=f"Budget ({T_MAX_MS:.0f}ms)")
     ax.set_xlabel("Number of Servers (M)", fontsize=11)
     ax.set_ylabel("Mean Runtime (ms)", fontsize=11)
     ax.set_title("(b) Runtime vs. Cluster Size", fontsize=11)
     ax.legend(fontsize=9, loc="upper left")
     ax.set_xticks([5, 10, 20, 50])
+    ax.set_ylim(0, 25)
     ax.grid(True, alpha=0.3)
-
     plt.tight_layout()
-    plt.savefig("figures/fig5_scalability.pdf", bbox_inches="tight", dpi=300)
-    plt.savefig("figures/fig5_scalability.png", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig5b_scalability_runtime.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig("figures/fig5b_scalability_runtime.png", bbox_inches="tight", dpi=300)
     plt.close()
-    print("Generated: figures/fig5_scalability.pdf")
+    print("Generated: figures/fig5b_scalability_runtime.pdf")
 
     print("\n===== Scalability Summary =====")
     print("\nCVR by (M, Algorithm):")

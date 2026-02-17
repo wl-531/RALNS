@@ -1,9 +1,9 @@
 """RA-LNS: Risk-Aware Large Neighborhood Search
 
-字典序：Psi(X) = (-feas, RR_max, O1)，tie-break: R_sum
+字典序：Psi(X) = (-feas, RD_max, O1)，tie-break: R_sum
 
-Level-1 使用 RR_max = max_j [σ_j / (C_j - μ_j)] 直接对应 Cantelli CVR bound，
-而非 U_max（负载均衡指标）。
+Level-1 使用 RD_max = max_j [σ_j / Gap_j] = max_j [σ_j / (C_j - L̂_j)]，
+含 κ，决策随 α 变化。
 """
 import time
 import numpy as np
@@ -78,6 +78,15 @@ class RALNSSolution:
         return float(np.max(self.RR))
 
     @property
+    def RD_max(self) -> float:
+        """Level-1 目标: 最大风险密度（越小越好）
+
+        RD_j = σ_j / Gap_j = σ_j / (C_j - L̂_j)
+        包含 κ，因此决策会随 α 变化
+        """
+        return float(np.max(self.RD))
+
+    @property
     def U_max(self) -> float:
         """最大鲁棒利用率（仅用于日志，不再用于 Level-1）"""
         return float(np.max(self.L_hat / self.C))
@@ -100,12 +109,12 @@ class RALNSSolution:
         """3层字典序向量（越小越好）
 
         Level-0: 可行性 (硬约束)，可行=0, 不可行=1
-        Level-1: min max_j RR_j (CVR 代理，直接对应 Cantelli)
+        Level-1: min max_j RD_j (风险密度，含 κ)
         Level-2: min O₁ = min max_j L̂_j (makespan)
         """
         return (
             0 if self.is_feasible() else 1,
-            self.RR_max,
+            self.RD_max,
             self.O1
         )
 
@@ -206,8 +215,8 @@ class RALNSSolver(BaseSolver):
         """Phase 0: Risk-First Construction
 
         按到达顺序贪心分配（随机分散高风险任务）。
-        选择使 new_RR_j = σ'_j / (C_j - μ'_j) 最小的可行服务器。
-        与 Level-1 目标 (min RR_max) 一致。
+        选择使 new_RD_j = σ'_j / Gap'_j 最小的可行服务器。
+        与 Level-1 目标 (min RD_max) 一致。
         """
         sol = RALNSSolution(servers, self.kappa)
         fallback_count = 0
@@ -227,16 +236,15 @@ class RALNSSolver(BaseSolver):
             new_L_hat = sol.L0 + new_mu + self.kappa * new_sigma
             new_Gap = sol.C - new_L_hat
 
-            # 计算 new_RR_j = σ'_j / margin'_j（与 Level-1 目标一致）
-            new_margin = sol.C - (sol.L0 + new_mu)
-            new_RR = new_sigma / np.maximum(new_margin, self.eps_div)
+            # 计算 new_RD_j = σ'_j / Gap'_j（含 κ，与 Level-1 目标一致）
+            new_RD = new_sigma / np.maximum(new_Gap, self.eps_div)
 
-            # 选择可行且 RR 最小的服务器
+            # 选择可行且 RD 最小的服务器
             best_j = None
-            best_rr = np.inf
+            best_rd = np.inf
             for j in range(sol.m):
-                if new_Gap[j] >= -self.eps_tol and new_RR[j] < best_rr:
-                    best_rr = new_RR[j]
+                if new_Gap[j] >= -self.eps_tol and new_RD[j] < best_rd:
+                    best_rd = new_RD[j]
                     best_j = j
 
             if best_j is not None:
@@ -244,9 +252,9 @@ class RALNSSolver(BaseSolver):
                 sol.mu_sum[best_j] += task.mu
                 sol.sigma_sq_sum[best_j] += task.sigma ** 2
             else:
-                # Fallback: 分配到 RR 最小的服务器（即使不可行）
+                # Fallback: 分配到 RD 最小的服务器（即使不可行）
                 fallback_count += 1
-                j_min = int(np.argmin(new_RR))
+                j_min = int(np.argmin(new_RD))
                 sol.assignment[i] = j_min
                 sol.mu_sum[j_min] += task.mu
                 sol.sigma_sq_sum[j_min] += task.sigma ** 2
@@ -256,13 +264,14 @@ class RALNSSolver(BaseSolver):
     def _risk_hedging_move(self, sol: RALNSSolution, tasks: List[Task]) -> bool:
         """Stage-1A: Micro Risk Hedging
 
-        RR 引导（与 Level-1 目标一致）：
-        1. 按 RR 降序遍历服务器（优先优化风险比最高的）
+        RD 引导（与 Level-1 目标一致）：
+        1. 不可行服务器按违背程度优先，可行服务器按 RD 排序
         2. 对每个服务器，按 sigma 降序遍历 victims
         3. 找到改进就应用并返回
         """
-        # 按 RR 降序遍历服务器（与 Level-1 目标 min RR_max 一致）
-        server_order = list(np.argsort(-sol.RR))
+        # 不可行服务器按违背程度优先，可行服务器按 RD 排序
+        sort_key = np.where(sol.Gap < 0, 1e9 - sol.Gap, sol.RD)
+        server_order = list(np.argsort(-sort_key))
 
         for from_j in server_order:
             victims = [i for i, j in enumerate(sol.assignment) if j == from_j]
@@ -330,13 +339,14 @@ class RALNSSolver(BaseSolver):
     def _risk_guided_lns(self, sol: RALNSSolution, tasks: List[Task]) -> bool:
         """Stage-1B: Macro Risk Rebalancing
 
-        1. Destroy: RR 引导选择服务器（与 Level-1 目标一致），移除 top-k 最高方差的可移动任务
-        2. Repair: 按方差降序重新插入，选择最小化 new_RR_j 的服务器
+        1. Destroy: RD 引导选择服务器（与 Level-1 目标一致），移除 top-k 最高方差的可移动任务
+        2. Repair: 按方差降序重新插入，选择最小化 new_RD_j 的服务器
         """
         backup_sol = sol.copy()
 
-        # 按 RR 降序遍历服务器（与 Level-1 目标 min RR_max 一致）
-        server_order = list(np.argsort(-sol.RR))
+        # 不可行服务器按违背程度优先，可行服务器按 RD 排序
+        sort_key = np.where(sol.Gap < 0, 1e9 - sol.Gap, sol.RD)
+        server_order = list(np.argsort(-sort_key))
 
         j_hot = None
         victims = []
@@ -386,19 +396,18 @@ class RALNSSolver(BaseSolver):
             sol.sigma_sq_sum[j] -= task.sigma ** 2
             sol.assignment[i] = -1
 
-        # Repair: 按方差降序重新插入，选择最小化 new_RR_j 的服务器
-        # BUG FIX: 使用 RR (与目标一致) 而不是 RD
+        # Repair: 按方差降序重新插入，选择最小化 new_RD_j 的服务器
         repair_order = sorted(destroy_tasks, key=lambda i: tasks[i].sigma, reverse=True)
         is_first = True
 
         for i in repair_order:
             task = tasks[i]
 
-            # 计算插入到每台服务器后的 RR
+            # 计算插入到每台服务器后的 RD
             best_j = None
-            best_new_rr = np.inf
+            best_new_rd = np.inf
             fallback_j = None
-            fallback_new_rr = np.inf
+            fallback_new_rd = np.inf
 
             for j in range(sol.m):
                 # 计算插入后的状态
@@ -412,19 +421,18 @@ class RALNSSolver(BaseSolver):
                 if new_Gap_j < -self.eps_tol:
                     continue
 
-                # 计算新的 RR_j = sigma_j / margin_j (与目标一致)
-                new_margin_j = sol.C[j] - (sol.L0[j] + new_mu_j)
-                new_RR_j = new_sigma_j / max(new_margin_j, self.eps_div)
+                # 计算新的 RD_j = sigma_j / Gap_j (含 κ，与 Level-1 目标一致)
+                new_RD_j = new_sigma_j / max(new_Gap_j, self.eps_div)
 
                 # 第一个任务优先不返回 j_hot
                 if is_first and j == j_hot:
-                    if fallback_j is None or new_RR_j < fallback_new_rr:
+                    if fallback_j is None or new_RD_j < fallback_new_rd:
                         fallback_j = j
-                        fallback_new_rr = new_RR_j
+                        fallback_new_rd = new_RD_j
                     continue
 
-                if new_RR_j < best_new_rr:
-                    best_new_rr = new_RR_j
+                if new_RD_j < best_new_rd:
+                    best_new_rd = new_RD_j
                     best_j = j
 
             # 如果没有可行的非 j_hot 选项，允许返回 j_hot
@@ -467,7 +475,7 @@ class RALNSSolver(BaseSolver):
     def _psi_better(self, psi1: Tuple, psi2: Tuple, r_sum1: float, r_sum2: float) -> bool:
         """3 层字典序比较 + R_sum tie-break
 
-        Psi = (-feas, RR_max, O1)
+        Psi = (-feas, RD_max, O1)
         越小越好
         """
         # Level-0: feas（严格比较）
