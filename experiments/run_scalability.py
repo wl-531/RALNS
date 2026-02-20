@@ -64,6 +64,7 @@ def run_scalability(seed=42, verbose=True):
                 servers = deepcopy(servers_init)
 
                 cvr_list, time_list, robust_util_list, util_total_list = [], [], [], []
+                jfi_list = []
 
                 for t in range(N_PERIODS):
                     tasks = tasks_list[t]
@@ -79,6 +80,7 @@ def run_scalability(seed=42, verbose=True):
                     time_list.append(solve_time)
                     robust_util_list.append(metrics['robust_util_total'])
                     util_total_list.append(metrics['util_total'])
+                    jfi_list.append(metrics['jfi'])
 
                     next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
                     for j in range(M):
@@ -94,6 +96,7 @@ def run_scalability(seed=42, verbose=True):
                     'cvr_mean': np.mean(cvr_list),
                     'robust_util_total_mean': np.mean(robust_util_list),
                     'util_total_mean': np.mean(util_total_list),
+                    'jfi_mean': np.mean(jfi_list),
                     'time_mean_ms': np.mean(time_arr),
                     'time_std_ms': float(np.std(time_arr)),
                     'time_p99_ms': float(np.percentile(time_arr, 99)),

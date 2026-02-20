@@ -64,6 +64,10 @@ def compute_metrics(assignment: List[int], tasks: List[Task],
     robust_load_ratio = float(np.sum(L_hat) / np.sum(C))  # 系统级鲁棒负载率
     load_ratio = float(np.sum(L0 + mu_sum) / np.sum(C))   # 系统级期望负载率
 
+    # Jain's Fairness Index (期望版，含 backlog)
+    u_exp = (L0 + mu_sum) / C
+    jfi = float(np.sum(u_exp) ** 2 / (m * np.sum(u_exp ** 2) + 1e-12))
+
     return {
         'feasible': feasible,
         'U_max': U_max,
@@ -79,4 +83,5 @@ def compute_metrics(assignment: List[int], tasks: List[Task],
         'robust_util_total': robust_util_total,
         'robust_load_ratio': robust_load_ratio,
         'load_ratio': load_ratio,
+        'jfi': jfi,
     }

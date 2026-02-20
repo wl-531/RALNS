@@ -33,6 +33,7 @@ def run_online_simulation(solver, tasks_list, servers_init, n_periods):
         'util_new': [],
         'util_total': [],
         'robust_util_total': [],
+        'jfi': [],
     }
 
     for t in range(n_periods):
@@ -62,6 +63,7 @@ def run_online_simulation(solver, tasks_list, servers_init, n_periods):
         results['util_new'].append(metrics['util_new'])
         results['util_total'].append(metrics['util_total'])
         results['robust_util_total'].append(metrics['robust_util_total'])
+        results['jfi'].append(metrics['jfi'])
 
         next_backlog = compute_next_backlog(assignment, tasks, servers, DECISION_INTERVAL)
         for j in range(m):
@@ -133,6 +135,7 @@ def run_main_experiment(seed=42, verbose=True):
                 'util_new_mean': np.mean(results['util_new']),
                 'util_total_mean': np.mean(results['util_total']),
                 'robust_util_total_mean': np.mean(results['robust_util_total']),
+                'jfi_mean': np.mean(results['jfi']),
                 # E2 完整 runtime 统计
                 'time_std_ms': float(np.std(time_arr)),
                 'time_p50_ms': float(np.percentile(time_arr, 50)),

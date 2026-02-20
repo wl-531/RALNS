@@ -303,7 +303,6 @@ def plot_scalability(csv_path="results_scalability.csv"):
 
     ax.set_xlabel("Number of Servers (M)", fontsize=11)
     ax.set_ylabel("System CVR", fontsize=11)
-    ax.set_title("(a) CVR vs. Cluster Size", fontsize=11)
     ax.legend(fontsize=9, loc="upper right")
     ax.set_xticks([5, 10, 20, 50])
     ymin, ymax = ax.get_ylim()
@@ -324,7 +323,6 @@ def plot_scalability(csv_path="results_scalability.csv"):
 
     ax.set_xlabel("Number of Servers (M)", fontsize=11)
     ax.set_ylabel("Mean Runtime (ms)", fontsize=11)
-    ax.set_title("(b) Runtime vs. Cluster Size", fontsize=11)
     ax.legend(fontsize=9, loc="upper left")
     ax.set_xticks([5, 10, 20, 50])
     ax.set_ylim(0, 25)
